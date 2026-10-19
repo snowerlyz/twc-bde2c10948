@@ -1,0 +1,16 @@
+{
+  "name": "台股羅盤",
+  "short_name": "台股羅盤",
+  "description": "股票、權證、期貨的短中長期趨勢分數，每天依實際行情自動校正。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#060b17",
+  "theme_color": "#060b17",
+  "lang": "zh-Hant-TW",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

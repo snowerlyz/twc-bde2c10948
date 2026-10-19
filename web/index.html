@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant-TW" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>台股羅盤</title>
+<meta name="description" content="整合股票、權證、期貨的台股分析工具，每天依實際行情自動校正短中長期判斷。">
+<meta name="theme-color" content="#060b17">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="台股羅盤">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <a class="brand" href="#/"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M20 6 L24 20 L20 34 L16 20 Z" fill="#e6b75c"/><circle cx="20" cy="20" r="2.6" fill="currentColor"/></svg><b>台股羅盤</b></a>
+    <nav class="nav" id="nav"></nav>
+    <div class="foot">資料來源：證交所、櫃買中心、期交所公開資料<br>僅供研究參考，不構成投資建議</div>
+  </aside>
+  <main class="main">
+    <header class="top">
+      <a class="brand-m" href="#/"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M20 6 L24 20 L20 34 L16 20 Z" fill="#e6b75c"/><circle cx="20" cy="20" r="2.6" fill="currentColor"/></svg>台股羅盤</a>
+      <div class="search" id="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="輸入股票代號或名稱，例如 2330、台積電" autocomplete="off" aria-label="搜尋股票">
+        <div class="suggest hide" id="suggest" role="listbox"></div>
+      </div>
+      <div class="seg" id="hzseg" role="tablist" aria-label="投資期間"></div>
+      <div class="datainfo" id="datainfo"></div>
+    </header>
+    <div class="ticker hide" id="ticker" aria-label="成交值前幾大的股票即時行情"></div>
+    <div id="view"></div>
+  </main>
+</div>
+<nav class="tabbar" id="tabbar"></nav>
+<script src="fx.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

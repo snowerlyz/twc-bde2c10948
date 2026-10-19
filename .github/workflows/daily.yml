@@ -1,0 +1,62 @@
+name: 每日更新
+on:
+  schedule:
+    - cron: '40 7 * * 1-5'    # 台灣時間 15:40（收盤行情、三大法人）
+    - cron: '50 13 * * 1-5'   # 台灣時間 21:50（融資融券）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: twc-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 抓取官方資料並分析
+        env:
+          TWC_DATA: ${{ github.workspace }}/data
+        run: python app/main.py update && tail -n 40 data/logs/run.log
+      - name: 保存資料（data 分支只保留最新一份）
+        working-directory: data
+        run: |
+          git config user.name "twc-bot"
+          git config user.email "twc-bot@users.noreply.github.com"
+          git add -A db
+          git commit --amend -m "data $(date -u +%F)" --quiet
+          git push --force origin HEAD:data
+      - name: 產生網站
+        env:
+          TWC_DATA: ${{ github.workspace }}/data
+        run: python app/build_site.py _site
+      - name: 每月一次維持排程有效（GitHub 會停用 60 天沒動靜的公開專案排程）
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          if [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" -lt "10" ]; then
+            git config user.name "twc-bot"; git config user.email "twc-bot@users.noreply.github.com"
+            date -u +%F > .github/keepalive
+            git add .github/keepalive && git commit -m "keepalive" && git push || true
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
