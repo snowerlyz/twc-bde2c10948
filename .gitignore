@@ -1,0 +1,7 @@
+results/
+logs/
+raw/
+*.lock
+*.tmp
+server.json
+watchlist.json
