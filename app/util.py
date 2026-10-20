@@ -90,6 +90,7 @@ HOST_GAP = {
     "www.tpex.org.tw": 1.2,
     "www.taifex.com.tw": 1.5,
     "openapi.taifex.com.tw": 1.0,
+    "mopsov.twse.com.tw": 2.0,
 }
 _host_locks = {}
 _host_last = {}

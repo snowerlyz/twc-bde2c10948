@@ -28,7 +28,7 @@ HALF_LIFE = json.loads(os.environ["TWC_HL"]) if os.environ.get("TWC_HL") else {"
 CAL_WIN = {"short": 60, "mid": 80, "long": 100}
 SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
-ENGINE_VERSION = 8
+ENGINE_VERSION = 9
 
 
 def isnan(x):
@@ -86,6 +86,11 @@ FACTORS = [
     ("qfii_chg20", "外資持股比率近一個月變化", "大戶動向", (0.005, 0.010, 0.005)),
     ("big_chg", "千張大戶持股比例變化（集保）", "大戶動向", (0.005, 0.010, 0.010)),
     ("retail_chg", "散戶人數變化（集保）", "大戶動向", (-0.005, -0.010, -0.010)),
+    ("rev_yoy3", "近三個月營收年增率", "公司體質", (0.005, 0.010, 0.015)),
+    ("rev_acc", "營收成長加速（近三個月 vs 之前）", "公司體質", (0.005, 0.010, 0.010)),
+    ("rev_high", "營收創 12 個月新高", "公司體質", (0.005, 0.010, 0.010)),
+    ("eps_yoy", "最新一季每股盈餘年增率", "公司體質", (0.005, 0.010, 0.010)),
+    ("eps_acc", "獲利成長加速（財報驚喜）", "公司體質", (0.003, 0.005, 0.005)),
 ]
 FKEYS = [f[0] for f in FACTORS]
 FNAME = {f[0]: f[1] for f in FACTORS}
@@ -300,6 +305,12 @@ def load_data(max_days=320):
     load_news(D)
     load_global(D)
     load_holders(D)
+    try:
+        import finhist
+        D.fin = finhist.load(D.days, D.industry)
+    except Exception as e:
+        log("讀取營收／財報歷史失敗：%s" % e)
+        D.fin = {}
     return D
 
 
@@ -501,6 +512,7 @@ def adjust_series(s):
 
 _SHARES = {}
 _HOLD = {"snaps": [], "idx": []}
+_FIN = {}
 
 
 def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
@@ -639,6 +651,20 @@ def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
         F["bpy"][t] = 1.0 / pb if pb and pb > 0 else NAN
         F["yld"][t] = f.get("yld") if f.get("yld") is not None else NAN
         F["om"][t] = _clip(f.get("om"), -100, 100)
+    # 營收與財報歷史（只在公布期限之後才使用）
+    fh = _FIN.get(code)
+    for k in ("rev_yoy3", "rev_acc", "rev_high", "eps_yoy", "eps_acc"):
+        F[k] = [NAN] * T
+    if fh:
+        for k in ("rev_yoy3", "rev_acc", "rev_high", "eps_yoy", "eps_acc", "rev_yoy", "rev_cum"):
+            src = fh.get(k)
+            if not src:
+                continue
+            lim = {"rev_yoy": (-100, 300), "rev_cum": (-100, 300), "rev_yoy3": (-100, 300), "rev_acc": (-200, 200)}.get(k)
+            for t in range(T):
+                v = src[t]
+                if v is not None:
+                    F[k][t] = _clip(v, *lim) if lim else v
     # 單日最大漲幅、週轉率、市值
     mx = [NAN] * T
     for t in range(20, T):
@@ -1193,6 +1219,16 @@ def reason_text(k, v, sign):
         return "週轉率每天約 %.1f%%（%s）" % (v * 100, "交易熱絡" if v >= 0.02 else "交易清淡" if v < 0.002 else "普通")
     if k == "size":
         return "市值約 %s 億元（%s）" % (format(int(math.exp(v) / 1e8), ","), "大型股" if v >= math.log(1e11) else "小型股" if v < math.log(1e10) else "中型股")
+    if k == "rev_yoy3":
+        return "近三個月營收比去年%s %.1f%%" % ("成長" if v >= 0 else "衰退", abs(v))
+    if k == "rev_acc":
+        return "營收成長%s（近三個月比之前快 %.1f 個百分點）" % ("加速", v) if v > 0 else "營收成長放緩（近三個月比之前慢 %.1f 個百分點）" % -v
+    if k == "rev_high":
+        return "月營收創 12 個月新高" if v >= 0 else ("月營收比一年內最高月份低 %.0f%%" % (-v * 100) if v < -0.2 else None)
+    if k == "eps_yoy":
+        return "最新一季每股盈餘比去年同期%s %.0f%%" % ("成長" if v >= 0 else "衰退", abs(v) * 100)
+    if k == "eps_acc":
+        return "獲利成長%s" % ("加速" if v > 0 else "放緩") if abs(v) >= 0.1 else None
     if k == "qfii_lvl":
         return "外資持股比率 %.1f%%" % v
     if k == "qfii_chg20":
@@ -1240,6 +1276,8 @@ def run_engine(prog=None):
     _SHARES.clear()
     _SHARES.update(D.shares)
     _HOLD["snaps"], _HOLD["idx"] = D.tdcc, D.tdcc_idx
+    _FIN.clear()
+    _FIN.update(getattr(D, "fin", {}) or {})
     A_all, traded_all, val20_all, ret_all = [None] * N, [None] * N, [None] * N, [None] * N
     ma_all = [None] * N
     stock_close, stock_fi = {}, {}
