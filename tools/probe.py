@@ -24,13 +24,22 @@ def tryit(name, url, n=900, enc="utf-8"):
     except Exception as e:
         res[name] = {"err": repr(e)}
     time.sleep(3.5)
-tryit("twse_qfiis", "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?date=20261020&selectType=ALLBUT0999&response=json", 1500)
-tryit("twse_qfiis_old", "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?date=20251020&selectType=ALLBUT0999&response=json", 400)
-tryit("tpex_qfii_www", "https://www.tpex.org.tw/www/zh-tw/insti/qfii?date=2026/10/20&response=json", 1500)
-tryit("tpex_qfii_www2", "https://www.tpex.org.tw/www/zh-tw/insti/qfiiStat?date=2026/10/20&response=json", 800)
-tryit("tpex_qfii_old", "https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=json&d=115/10/20", 1500)
-tryit("tpex_openapi_qfii", "https://www.tpex.org.tw/openapi/v1/tpex_3insti_qfii", 1200)
-tryit("tpex_openapi_qfii2", "https://www.tpex.org.tw/openapi/v1/tpex_qfii_trading", 600)
-tryit("tdcc_15", "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5", 1500)
-tryit("tdcc_smart", "https://smart.tdcc.com.tw/opendata/getOD.ashx?id=1-5", 800)
+tryit("rev_sii_html", "https://mopsov.twse.com.tw/nas/t21/sii/t21sc03_115_9_0.html", 1500, "big5")
+tryit("rev_otc_html", "https://mopsov.twse.com.tw/nas/t21/otc/t21sc03_115_9_0.html", 800, "big5")
+tryit("rev_sii_html_old", "https://mopsov.twse.com.tw/nas/t21/sii/t21sc03_114_3_0.html", 600, "big5")
+tryit("rev_mops_html", "https://mops.twse.com.tw/nas/t21/sii/t21sc03_115_9_0.html", 600, "big5")
+def post(name, url, data, n=1500):
+    try:
+        import urllib.parse
+        body = urllib.parse.urlencode(data).encode()
+        req = urllib.request.Request(url, data=body, headers={"User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded", "Referer": "https://mopsov.twse.com.tw/mops/web/t163sb04"})
+        with urllib.request.urlopen(req, timeout=60, context=ctx) as r:
+            b = r.read()
+            res[name] = {"status": r.status, "ct": r.headers.get("Content-Type"), "len": len(b), "head": b.decode("utf-8", errors="replace")[:n]}
+    except Exception as e:
+        res[name] = {"err": repr(e)}
+    time.sleep(3.5)
+post("eps_ov", "https://mopsov.twse.com.tw/mops/web/ajax_t163sb04", {"encodeURIComponent": 1, "step": 1, "firstin": 1, "off": 1, "isQuery": "Y", "TYPEK": "sii", "year": "115", "season": "02"})
+post("eps_mops", "https://mops.twse.com.tw/mops/web/ajax_t163sb04", {"encodeURIComponent": 1, "step": 1, "firstin": 1, "off": 1, "isQuery": "Y", "TYPEK": "sii", "year": "115", "season": "02"})
+tryit("eps_openapi_hist", "https://openapi.twse.com.tw/v1/opendata/t187ap14_L", 800)
 json.dump(res, open("probe_result.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
