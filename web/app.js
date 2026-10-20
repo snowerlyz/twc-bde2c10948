@@ -74,7 +74,7 @@ const GLOSS = {
   foi: "外資在台指期的多空淨留倉口數。正數為淨多單，負數為淨空單；變化方向比絕對數字更值得注意。",
   pc: "選擇權賣權未平倉量 ÷ 買權未平倉量。台灣市場上比值偏高時常被解讀為支撐較強。",
   dtscore: "當沖分數（0～100）：依今天收盤後的短線因子排名，分數越高代表下一個交易日開盤買進、收盤賣出的勝算越高；越低則越適合先賣後買。權重每天依前一天的實際結果自動調整。",
-  dtwin: "過去 60 個交易日，分數落在同一區間的股票，隔天照這個方向當沖、扣掉來回成本後真的賺錢的比例。",
+  dtwin: "勝算＝扣成本後的勝率：過去 60 個交易日裡，條件相近的股票隔天照這個方向當沖（開盤進、收盤出），扣掉來回成本後真的賺錢的比例。超過 50% 且平均報酬為正才算有優勢。",
   dttp: "同分數區間的股票，隔天盤中從開盤算起的最大有利幅度（中位數），可當停利參考。",
   dtsl: "同分數區間的股票，隔天盤中從開盤算起的最大不利幅度（中位數），可當停損參考。",
   oi: "未平倉量：市場上還沒平倉的契約口數。價漲量增代表新資金進場。",
@@ -601,7 +601,7 @@ async function vStock(tok, code) {
       <div class="muted small">${esc(d.m)}${d.ind ? "・" + esc(d.ind) : ""}・${dayFull(d.day)} 收盤</div></div>
     <div class="px" data-count="${last[4]}" data-dec="${last[4] >= 1000 ? 0 : last[4] >= 100 ? 1 : 2}">${fmtPx(last[4])}</div><div class="chg">${chgHtml(chg)}</div>
     <div class="shb">${starBtn(code).replace('class="star', 'class="btn star').replace("</button>", "<span>自選</span></button>")}
-      ${d.dt != null ? `<a class="btn" href="#/daytrade" title="下一個交易日的當沖分數">當沖分數 ${pill(d.dt)}</a>` : ""}
+      ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣成本後的勝率">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
       ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}</div>
   </div>
   <div class="grid g3">
@@ -773,6 +773,12 @@ async function vFutures(tok) {
 
 // ====================================================================== 當沖
 let dtSide = null;
+function dtPill(win, side) {
+  if (win == null) return "p-mid";
+  if (win >= 0.55) return side === "long" ? "p-up2" : "p-dn2";
+  if (win > 0.5) return side === "long" ? "p-up1" : "p-dn1";
+  return "p-mid";
+}
 async function vDayTrade(tok) {
   const d = await api("daytrade").catch(() => null);
   if (tok !== routeToken) return;
@@ -810,10 +816,10 @@ async function vDayTrade(tok) {
     const sideStat = dtSide === "long" ? L : Sx;
     $("#dtwarn").innerHTML = okN ? `<div class="warnbox section">今天有 <b>${okN}</b> 檔符合推薦條件（同分數區間過去扣成本後勝率超過 50% 且平均報酬為正），標示為「推薦」。其餘僅列入觀察。</div>` :
       `<div class="warnbox section">這個方向今天<b>沒有</b>符合推薦條件的標的：同分數區間的股票過去扣掉成本後平均仍是虧損${sideOk(sideStat) ? "" : "，整體回測也還沒有優勢"}。以下名單只供觀察，不建議照做。</div>`;
-    $("#dtlist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>收盤</th><th>當沖分數${help("dtscore")}</th><th>勝率${help("dtwin")}</th><th>平均報酬</th><th>停利參考${help("dttp")}</th><th>停損參考${help("dtsl")}</th><th>平均振幅</th><th>日均成交</th><th style="text-align:left">理由</th></tr></thead><tbody>
+    $("#dtlist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>收盤</th><th>勝算${help("dtwin")}</th><th>平均報酬</th><th>停利參考${help("dttp")}</th><th>停損參考${help("dtsl")}</th><th>平均振幅</th><th>日均成交</th><th style="text-align:left">理由</th></tr></thead><tbody>
       ${rows.map((r) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'"><td><b>${esc(r.n)}</b> ${r.ok ? `<span class="pill ${dtSide === "long" ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">推薦</span>` : ""}<br><span class="muted small">${r.c}・${esc(r.m)}</span></td>
         <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
-        <td><span class="pill ${pillClass(dtSide === "long" ? r.score : 100 - r.score)}" title="當沖分數">${Math.round(r.score)}</span></td><td>${r.win != null ? pctS(r.win) : "—"}</td><td>${sv(r.avg)}</td>
+        <td><span class="pill ${dtPill(r.win, dtSide)}" title="扣成本後勝率">${(r.win * 100).toFixed(0)}%</span></td><td>${sv(r.avg)}</td>
         <td>${r.tp != null ? (dtSide === "long" ? "+" : "−") + Math.abs(r.tp * 100).toFixed(1) + "%" : "—"}</td>
         <td>${r.sl != null ? (dtSide === "long" ? "−" : "+") + Math.abs(r.sl * 100).toFixed(1) + "%" : "—"}</td>
         <td>${r.atr != null ? (r.atr * 100).toFixed(1) + "%" : "—"}</td><td>${r.val != null ? r.val.toFixed(1) + " 億" : "—"}</td>

@@ -341,6 +341,21 @@ def run(D, A_all, say=None):
             "hi": _q([x[1] for x in b], .5), "lo": _q([x[2] for x in b], .5),
         })
     # ---- 今天的推薦
+    # 分數＝「扣成本後勝率」：由分數區間的歷史結果內插而來，是絕對的勝算，不是排名，
+    # 所以整體沒有優勢時分數就會偏低，不會出現「100 分卻不建議」的矛盾。
+    centers = [(j + 0.5) / 10 for j in range(10)]
+
+    def interp(p, key):
+        pts = [(centers[j], calib[j][key]) for j in range(10) if calib[j] and calib[j].get(key) is not None]
+        if not pts:
+            return None
+        if p <= pts[0][0]:
+            return pts[0][1]
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            if p <= x1:
+                return y0 + (y1 - y0) * (p - x0) / (x1 - x0)
+        return pts[-1][1]
+
     last = T - 1
     pct = pct_hist.get(last, {})
     scores = {}
@@ -348,39 +363,35 @@ def run(D, A_all, say=None):
     for i, p in pct.items():
         code = codes[i]
         s = D.raw[code]
-        b = calib[min(9, int(p * 10))]
         contrib = sorted(((last_W[k] * last_R[k].get(i, 0.0), k) for k in DKEYS), reverse=True)
         pos = [reason(k, FA[i][k][last], w) for w, k in contrib[:6] if w > 0.0003]
         neg = [reason(k, FA[i][k][last], w) for w, k in contrib[::-1][:6] if w < -0.0003]
-        scores[code] = round(p * 100, 1)
+        wl, ws, av = interp(p, "win_long"), interp(p, "win_short"), interp(p, "avg")
+        hi, lo = interp(p, "hi"), interp(p, "lo")
+        scores[code] = [None if wl is None else round(wl * 100, 1), None if ws is None else round(ws * 100, 1)]
         rows.append({
             "c": code, "n": D.names.get(code, code), "m": D.market.get(code, ""),
             "px": s["c"][last], "chg": (s["c"][last] / s["ref"][last] - 1) if s["ref"][last] == s["ref"][last] and s["ref"][last] else 0,
             "p": round(p, 4), "atr": None if isnan(FA[i]["atr10"][last]) else round(FA[i]["atr10"][last], 4),
-            "val": round(val20[i][last] / 1e8, 2),
-            "b": b, "pos": [x for x in pos if x][:3], "neg": [x for x in neg if x][:3],
+            "val": round(val20[i][last] / 1e8, 2), "wl": wl, "ws": ws, "av": av, "hi": hi, "lo": lo,
+            "pos": [x for x in pos if x][:3], "neg": [x for x in neg if x][:3],
         })
 
     def pick(side):
-        if side == "long":
-            sel = sorted([r for r in rows if r["p"] >= 0.8], key=lambda r: -r["p"])[:30]
-        else:
-            sel = sorted([r for r in rows if r["p"] <= 0.2], key=lambda r: r["p"])[:30]
+        key = "wl" if side == "long" else "ws"
+        sel = [r for r in rows if r[key] is not None]
+        sel.sort(key=lambda r: (-r[key], -r["p"] if side == "long" else r["p"]))
         out = []
-        for r in sel:
-            b = r["b"] or {}
+        for r in sel[:30]:
             if side == "long":
-                score, win, avg = r["p"] * 100, b.get("win_long"), (b.get("avg") or 0) - COST
-                tp, sl, why = b.get("hi"), b.get("lo"), r["pos"]
+                win, avg, tp, sl, why = r["wl"], (r["av"] or 0) - COST, r["hi"], r["lo"], r["pos"]
             else:
-                score, win, avg = (1 - r["p"]) * 100, b.get("win_short"), -(b.get("avg") or 0) - COST
-                tp, sl, why = b.get("lo"), b.get("hi"), r["neg"]
-            ok = (win is not None and win > 0.5 and avg > 0)
+                win, avg, tp, sl, why = r["ws"], -(r["av"] or 0) - COST, r["lo"], r["hi"], r["neg"]
+            ok = win > 0.5 and avg > 0
             out.append({"c": r["c"], "n": r["n"], "m": r["m"], "px": r["px"], "chg": round(r["chg"], 4), "ok": ok,
-                        "score": round(score, 1), "win": None if win is None else round(win, 3),
-                        "avg": round(avg, 4) if b else None, "tp": None if tp is None else round(tp, 4),
-                        "sl": None if sl is None else round(sl, 4), "atr": r["atr"], "val": r["val"],
-                        "why": why or (r["pos"] if side == "long" else r["neg"])})
+                        "score": round(win * 100, 1), "win": round(win, 3), "avg": round(avg, 4),
+                        "tp": None if tp is None else round(tp, 4), "sl": None if sl is None else round(sl, 4),
+                        "atr": r["atr"], "val": r["val"], "why": why})
         return out
 
     roll = []
