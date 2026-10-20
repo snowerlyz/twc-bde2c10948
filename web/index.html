@@ -17,15 +17,47 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="logo" viewBox="0 0 64 64"><defs>
+  <linearGradient id="lgBz" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff3d1"/><stop offset=".25" stop-color="#d9b062"/><stop offset=".55" stop-color="#6d5020"/><stop offset=".78" stop-color="#cfa253"/><stop offset="1" stop-color="#3a2a0f"/></linearGradient>
+  <linearGradient id="lgBz2" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#f3dca4"/><stop offset=".5" stop-color="#7a5a24"/><stop offset="1" stop-color="#26190a"/></linearGradient>
+  <radialGradient id="lgFace" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="#26355a"/><stop offset=".6" stop-color="#0d1426"/><stop offset="1" stop-color="#03050b"/></radialGradient>
+  <linearGradient id="lgN" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff2cc"/><stop offset=".49" stop-color="#f1c565"/><stop offset=".51" stop-color="#b3812c"/><stop offset="1" stop-color="#6e4d15"/></linearGradient>
+  <linearGradient id="lgS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e9eef7"/><stop offset=".49" stop-color="#aeb8ca"/><stop offset=".51" stop-color="#6b7487"/><stop offset="1" stop-color="#3a4150"/></linearGradient>
+  <radialGradient id="lgHub" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff7df"/><stop offset=".4" stop-color="#d6ac5b"/><stop offset="1" stop-color="#3a2a0e"/></radialGradient>
+  <linearGradient id="lgGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  <filter id="lgSh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx=".6" dy="1.2" stdDeviation=".9" flood-color="#000" flood-opacity=".7"/></filter>
+</defs>
+<circle cx="32" cy="32" r="31" fill="url(#lgBz)"/>
+<circle cx="32" cy="32" r="27.5" fill="url(#lgBz2)"/>
+<circle cx="32" cy="32" r="25.6" fill="#04060b"/>
+<circle cx="32" cy="32" r="25" fill="url(#lgFace)"/>
+<g stroke="#d9e1f0" stroke-linecap="round">
+  <line x1="32" y1="9.5" x2="32" y2="13" stroke-width="1.6" stroke-opacity=".85"/>
+  <line x1="54.5" y1="32" x2="51" y2="32" stroke-width="1.2" stroke-opacity=".55"/>
+  <line x1="32" y1="54.5" x2="32" y2="51" stroke-width="1.2" stroke-opacity=".55"/>
+  <line x1="9.5" y1="32" x2="13" y2="32" stroke-width="1.2" stroke-opacity=".55"/>
+  <g stroke-width=".8" stroke-opacity=".3">
+    <line x1="47.9" y1="16.1" x2="46.3" y2="17.7"/><line x1="47.9" y1="47.9" x2="46.3" y2="46.3"/>
+    <line x1="16.1" y1="47.9" x2="17.7" y2="46.3"/><line x1="16.1" y1="16.1" x2="17.7" y2="17.7"/>
+  </g>
+</g>
+<g filter="url(#lgSh)" transform="rotate(28 32 32)">
+  <path d="M32 12 L36.2 32 L27.8 32 Z" fill="url(#lgN)"/>
+  <path d="M27.8 32 L36.2 32 L32 52 Z" fill="url(#lgS)"/>
+</g>
+<circle cx="32" cy="32" r="3.6" fill="url(#lgHub)"/>
+<circle cx="32" cy="32" r="1.2" fill="#2a1d08"/>
+<path d="M11 27 A21.5 21.5 0 0 1 53 27 Q32 19 11 27 Z" fill="url(#lgGlass)"/>
+</symbol></svg>
 <div class="app">
   <aside class="side">
-    <a class="brand" href="#/"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M20 6 L24 20 L20 34 L16 20 Z" fill="#e6b75c"/><circle cx="20" cy="20" r="2.6" fill="currentColor"/></svg><b>台股羅盤</b></a>
+    <a class="brand" href="#/"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo"/></svg><b>台股羅盤</b></a>
     <nav class="nav" id="nav"></nav>
     <div class="foot">資料來源：證交所、櫃買中心、期交所公開資料<br>僅供研究參考，不構成投資建議</div>
   </aside>
   <main class="main">
     <header class="top">
-      <a class="brand-m" href="#/"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M20 6 L24 20 L20 34 L16 20 Z" fill="#e6b75c"/><circle cx="20" cy="20" r="2.6" fill="currentColor"/></svg>台股羅盤</a>
+      <a class="brand-m" href="#/"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo"/></svg>台股羅盤</a>
       <div class="search" id="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="q" type="search" placeholder="輸入股票代號或名稱，例如 2330、台積電" autocomplete="off" aria-label="搜尋股票">
