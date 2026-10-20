@@ -102,13 +102,23 @@ def analyze(prog=None):
     import importlib
     import engine as _e
     import derivs as _d
+    import daytrade as _dt
     importlib.reload(_e)
     importlib.reload(_d)
+    importlib.reload(_dt)
     from engine import run_engine, stock_detail, HN, ENGINE_VERSION
     from derivs import evaluate_warrants, evaluate_futures, hist_vol
 
     res, D, A_all = run_engine(prog)
     stocks = res["stocks"]
+    try:
+        dt, dt_scores = _dt.run(D, A_all, (lambda m: prog.set(msg=m)) if prog else None)
+    except Exception as e:
+        log("當沖模型失敗：%s\n%s" % (e, traceback.format_exc()))
+        dt, dt_scores = None, {}
+    for r in stocks:
+        if r["c"] in dt_scores:
+            r["dt"] = dt_scores[r["c"]]
     by_code = {r["c"]: r for r in stocks}
     mkt = res["market"]
 
@@ -151,6 +161,7 @@ def analyze(prog=None):
             det["warrants"] = {"n_call": w["n_call"], "n_put": w["n_put"],
                                "calls": w["calls"][:5], "puts": w["puts"][:5]}
         det["fut"] = next((f for f in fut["stock"] if f["stock"] == code), None)
+        det["dt"] = dt_scores.get(code)
         write_json(os.path.join(sdir, code + ".json"), det)
     wdir = os.path.join(RESULTS, "warrants")
     os.makedirs(wdir, exist_ok=True)
@@ -163,6 +174,8 @@ def analyze(prog=None):
                                                                    "nc": w["n_call"], "np": w["n_put"]} for u, w in wmap.items() if u],
                                                                  key=lambda x: -(x["nc"] + x["np"]))})
     write_json(os.path.join(RESULTS, "futures.json"), fut)
+    if dt:
+        write_json(os.path.join(RESULTS, "daytrade.json"), dt)
     write_json(os.path.join(RESULTS, "model.json"), res["model"])
     snapinfo = read_json(os.path.join(DB, "snapshot", "info.json"), {}) or {}
     latest = {

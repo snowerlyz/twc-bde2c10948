@@ -73,6 +73,10 @@ const GLOSS = {
   basis: "期貨價格減現貨（加權指數）。正價差代表市場對後市較樂觀，逆價差較保守；接近結算日會趨近於零。",
   foi: "外資在台指期的多空淨留倉口數。正數為淨多單，負數為淨空單；變化方向比絕對數字更值得注意。",
   pc: "選擇權賣權未平倉量 ÷ 買權未平倉量。台灣市場上比值偏高時常被解讀為支撐較強。",
+  dtscore: "當沖分數（0～100）：依今天收盤後的短線因子排名，分數越高代表下一個交易日開盤買進、收盤賣出的勝算越高；越低則越適合先賣後買。權重每天依前一天的實際結果自動調整。",
+  dtwin: "過去 60 個交易日，分數落在同一區間的股票，隔天照這個方向當沖、扣掉來回成本後真的賺錢的比例。",
+  dttp: "同分數區間的股票，隔天盤中從開盤算起的最大有利幅度（中位數），可當停利參考。",
+  dtsl: "同分數區間的股票，隔天盤中從開盤算起的最大不利幅度（中位數），可當停損參考。",
   oi: "未平倉量：市場上還沒平倉的契約口數。價漲量增代表新資金進場。",
 };
 function help(k) { return `<button class="help" type="button" data-help="${k}" aria-label="說明">?</button>`; }
@@ -101,16 +105,17 @@ const ICON = {
   model: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
 };
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
-  ["#/", "總覽", "home"], ["#/stocks", "選股", "list"], ["#/warrants", "權證", "warrant"],
+  ["#/", "總覽", "home"], ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
   ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/model", "模型成績單", "model"], ["#/help", "使用說明", "help"],
 ];
 $("#nav").innerHTML = NAV.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
-$("#tabbar").innerHTML = NAV.slice(0, 5).map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
+$("#tabbar").innerHTML = NAV.slice(0, 6).map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
 
 // ====================================================================== 資料
 const cache = {};
@@ -449,6 +454,7 @@ async function route() {
     else if (page === "stock") await vStock(tok, decodeURIComponent(arg));
     else if (page === "warrants") await vWarrants(tok, decodeURIComponent(arg || ""));
     else if (page === "futures") await vFutures(tok);
+    else if (page === "daytrade") await vDayTrade(tok);
     else if (page === "watch") await vWatch(tok);
     else if (page === "model") await vModel(tok);
     else if (page === "help") await vHelp(tok);
@@ -595,6 +601,7 @@ async function vStock(tok, code) {
       <div class="muted small">${esc(d.m)}${d.ind ? "・" + esc(d.ind) : ""}・${dayFull(d.day)} 收盤</div></div>
     <div class="px" data-count="${last[4]}" data-dec="${last[4] >= 1000 ? 0 : last[4] >= 100 ? 1 : 2}">${fmtPx(last[4])}</div><div class="chg">${chgHtml(chg)}</div>
     <div class="shb">${starBtn(code).replace('class="star', 'class="btn star').replace("</button>", "<span>自選</span></button>")}
+      ${d.dt != null ? `<a class="btn" href="#/daytrade" title="下一個交易日的當沖分數">當沖分數 ${pill(d.dt)}</a>` : ""}
       ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}</div>
   </div>
   <div class="grid g3">
@@ -762,6 +769,67 @@ async function vFutures(tok) {
     lineChart($("#cpc"), ser.days || [], ser.pc || [], { color: "var(--brass)", fmt: (v) => v.toFixed(0), ref: 100, refLabel: "100" });
   };
   draw(); onResize(() => location.hash === "#/futures" && draw());
+}
+
+// ====================================================================== 當沖
+let dtSide = null;
+async function vDayTrade(tok) {
+  const d = await api("daytrade").catch(() => null);
+  if (tok !== routeToken) return;
+  if (!d) { view.innerHTML = `<h1>當沖</h1><div class="card empty"><h2>當沖分析準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  const M = d.model, L = M.long, Sx = M.short;
+  const sideOk = (x) => x && x.avg > 0 && x.win > 0.5;
+  if (!dtSide) dtSide = d.long_ok !== d.short_ok ? (d.long_ok > d.short_ok ? "long" : "short") : (sideOk(M.short) && !sideOk(M.long) ? "short" : "long");
+  const pctS = (x) => (x * 100).toFixed(1) + "%";
+  const sv = (x) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(2)}%</span>`;
+  const statLine = (x, name) => x ? `${name}：扣成本後勝率 <b class="num">${pctS(x.win)}</b>，平均每筆 ${sv(x.avg)}` : `${name}：資料不足`;
+  view.innerHTML = `<h1 class="grad">當沖</h1>
+  <p class="lead">依 ${dayFull(d.day)} 收盤資料，評估<b>下一個交易日</b>開盤進場、收盤前出場的勝算。勝率與報酬都已扣除來回成本約 ${(d.cost * 100).toFixed(2)}%（手續費 6 折＋當沖證交稅 0.15%）。只看日均成交 1 億元以上、股價 10 元以上的股票，共 ${d.universe} 檔。</p>
+  <section class="card"><div class="card-h"><h2>回測成績</h2><span class="note">最近 ${M.eval_days} 個交易日，每天只用當時已知的資料打分數</span></div>
+    <div class="grid g2">
+      <div class="tile" style="padding:14px 16px"><div class="card-h" style="margin:0 0 6px"><h3>做多（先買後賣）</h3>${sideOk(L) ? '<span class="pill p-up1">有優勢</span>' : '<span class="pill p-mid">目前無優勢</span>'}</div>
+        <p style="margin:0">${statLine(L, "分數前 10%")}</p></div>
+      <div class="tile" style="padding:14px 16px"><div class="card-h" style="margin:0 0 6px"><h3>做空（先賣後買）</h3>${sideOk(Sx) ? '<span class="pill p-dn1">有優勢</span>' : '<span class="pill p-mid">目前無優勢</span>'}</div>
+        <p style="margin:0">${statLine(Sx, "分數後 10%")}</p></div>
+    </div>
+    <p class="note" style="margin:12px 0 0">對照：所有股票隨機當沖做多，扣成本後勝率約 ${M.base_win != null ? pctS(M.base_win) : "—"}。分數最高與最低兩組的隔天盤中表現平均相差 ${M.spread_avg != null ? (M.spread_avg * 100).toFixed(2) + "%" : "—"}，在 ${M.spread_win != null ? pctS(M.spread_win) : "—"} 的日子成立。</p>
+  </section>
+  <div class="section"><div class="seg" id="dtab"><button data-s="long">做多（先買後賣）</button><button data-s="short">做空（先賣後買）</button></div></div>
+  <div id="dtwarn"></div>
+  <section class="card flush section" id="dtlist"></section>
+  <div class="grid g3 section">
+    <section class="card"><h3>分數高低與隔天勝率</h3><p class="note" style="margin:2px 0 8px">由左（分數最低）到右（最高）；虛線是全部股票的平均</p><div class="chart" id="dtcal"></div></section>
+    <section class="card"><h3>近期預測力</h3><p class="note" style="margin:2px 0 8px">分數排名與隔天盤中報酬的相關性（20 日平均），大於 0 代表有效</p><div class="chart" id="dtic"></div></section>
+    <section class="card"><h3>目前最看重的指標</h3><p class="note" style="margin:2px 0 8px">紅色＝數值越高越適合做多，綠色＝數值越高越適合做空</p><div class="bars" id="dtfw"></div></section>
+  </div>
+  <p class="disclaimer">當沖風險極高：交易成本會吃掉大部分利潤，盤中波動也可能遠超停損參考。分數與勝率是過去的統計，不保證明天的結果，也不構成投資建議。請先確認自己已開通當沖資格，並嚴格控制部位。</p>`;
+  const draw = () => {
+    $$("#dtab button").forEach((b) => b.classList.toggle("on", b.dataset.s === dtSide));
+    const rows = d[dtSide] || [];
+    const okN = rows.filter((r) => r.ok).length;
+    const sideStat = dtSide === "long" ? L : Sx;
+    $("#dtwarn").innerHTML = okN ? `<div class="warnbox section">今天有 <b>${okN}</b> 檔符合推薦條件（同分數區間過去扣成本後勝率超過 50% 且平均報酬為正），標示為「推薦」。其餘僅列入觀察。</div>` :
+      `<div class="warnbox section">這個方向今天<b>沒有</b>符合推薦條件的標的：同分數區間的股票過去扣掉成本後平均仍是虧損${sideOk(sideStat) ? "" : "，整體回測也還沒有優勢"}。以下名單只供觀察，不建議照做。</div>`;
+    $("#dtlist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>收盤</th><th>當沖分數${help("dtscore")}</th><th>勝率${help("dtwin")}</th><th>平均報酬</th><th>停利參考${help("dttp")}</th><th>停損參考${help("dtsl")}</th><th>平均振幅</th><th>日均成交</th><th style="text-align:left">理由</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'"><td><b>${esc(r.n)}</b> ${r.ok ? `<span class="pill ${dtSide === "long" ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">推薦</span>` : ""}<br><span class="muted small">${r.c}・${esc(r.m)}</span></td>
+        <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
+        <td><span class="pill ${pillClass(dtSide === "long" ? r.score : 100 - r.score)}" title="當沖分數">${Math.round(r.score)}</span></td><td>${r.win != null ? pctS(r.win) : "—"}</td><td>${sv(r.avg)}</td>
+        <td>${r.tp != null ? (dtSide === "long" ? "+" : "−") + Math.abs(r.tp * 100).toFixed(1) + "%" : "—"}</td>
+        <td>${r.sl != null ? (dtSide === "long" ? "−" : "+") + Math.abs(r.sl * 100).toFixed(1) + "%" : "—"}</td>
+        <td>${r.atr != null ? (r.atr * 100).toFixed(1) + "%" : "—"}</td><td>${r.val != null ? r.val.toFixed(1) + " 億" : "—"}</td>
+        <td class="txt">${esc((r.why || []).join("；"))}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty"><p>今天沒有可評估的標的。</p></div>';
+    FX.enhance($("#dtlist"));
+    const cal = (M.calib || []).map((c) => c ? { n: c.n, up: dtSide === "long" ? c.win_long : c.win_short } : null);
+    const calOrdered = dtSide === "long" ? cal : [...cal].reverse();
+    const base = M.base_win != null ? (dtSide === "long" ? M.base_win : null) : null;
+    calibChart($("#dtcal"), calOrdered, base);
+    lineChart($("#dtic"), (M.ic_roll || []).map((p) => p[0]), (M.ic_roll || []).map((p) => p[1]), { color: "var(--brass)", fmt: (v) => v.toFixed(2), zero: true, height: 150 });
+    const fs = (M.factors || []).slice(0, 10), mx = Math.max(...fs.map((f) => Math.abs(f.w)), 1e-6);
+    $("#dtfw").innerHTML = fs.map((f) => `<div class="b" title="最近 IC ${f.ic}"><span class="nm">${esc(f.name)}</span><div class="sbar"><div class="track"><div class="fill ${f.w >= 0 ? "u" : "d"}" style="left:${f.w >= 0 ? 50 : 50 - Math.abs(f.w) / mx * 50}%;width:${Math.abs(f.w) / mx * 50}%"></div></div></div><span class="v small"></span></div>`).join("");
+  };
+  $("#dtab").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) { dtSide = b.dataset.s; draw(); } });
+  draw();
+  onResize(() => location.hash === "#/daytrade" && draw());
 }
 
 // ====================================================================== 自選

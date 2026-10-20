@@ -110,8 +110,8 @@ void main(){vec2 uv=gl_FragCoord.xy/r;
     if (reduce) return;
     const rows = root.querySelectorAll(".list > .row:not(.head), .bars > .b, .tbl tbody tr, .facts li");
     rows.forEach((r, i) => {
-      if (i > 40) return;
-      r.style.animationDelay = (Math.min(i, 20) * 28) + "ms";
+      if (i > 12 || r.classList.contains("rise")) return;
+      r.style.animationDelay = (i * 25) + "ms";
       r.classList.add("rise");
     });
   }
