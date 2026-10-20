@@ -696,6 +696,16 @@ def run_collect(prog, total_days=250, chip_days=120, quick_days=70, on_stage=Non
     collect_months(days_all, prog)
     if latest:
         collect_snapshot(latest, prog)
+    # 消息面與國際市場（抓不到不影響其他功能）
+    try:
+        import extra
+        from util import today_tw, ymd
+        prog.set(phase="snapshot", msg="下載新聞、重大訊息與國際市場")
+        extra.collect_news(ymd(today_tw()), latest)
+        extra.collect_global()
+        changed = (changed or 0) + 1
+    except Exception as e:
+        log("消息面／國際市場抓取失敗：%s" % e)
     if on_stage:
         on_stage("quick", changed)
     older = [d for d in days_all[quick_days:] if d not in set(cal["closed"])]

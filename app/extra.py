@@ -23,11 +23,17 @@ GLOBAL_PATH = os.path.join(DB, "global.json")
 POS = ["創新高", "新高", "成長", "大增", "增長", "優於預期", "超乎預期", "超預期", "看好", "調升", "上修", "上調", "受惠",
        "接單", "訂單", "擴產", "漲價", "獲利", "轉盈", "轉虧為盈", "買超", "加碼", "利多", "大漲", "漲停", "強勢", "突破",
        "回溫", "熱銷", "得標", "樂觀", "亮眼", "爆發", "復甦", "雙增", "攀升", "增溫", "旺季", "供不應求", "強勁", "創高",
-       "翻紅", "反彈", "續強", "看俏", "放量", "大單", "急單", "滿載", "認證", "量產", "出貨暢旺", "目標價"]
+       "翻紅", "反彈", "續強", "看俏", "放量", "大單", "急單", "滿載", "認證", "量產", "出貨暢旺", "調高目標價", "上調目標價", "升目標價", "漲逾", "V轉", "大漲", "噴出", "飆漲",
+       "填息", "填權", "獲利了結", "強漲", "必買", "買點", "攻高", "上攻", "勁揚", "走高", "收紅", "大買", "偏多", "看多"]
 NEG = ["衰退", "下滑", "減少", "虧損", "轉虧", "下修", "調降", "下調", "不如預期", "低於預期", "利空", "賣超", "減碼", "大跌",
        "跌停", "重挫", "疲弱", "停工", "裁員", "減產", "罰", "違約", "訴訟", "掏空", "示警", "警訊", "處置", "注意股", "跳票",
        "下市", "全額交割", "保守", "砍單", "庫存調整", "跌破", "失守", "賣壓", "翻黑", "崩", "暴跌", "疑慮", "延後",
-       "取消", "火災", "事故", "停產", "弱勢", "走弱", "回檔", "降評", "降等", "淡季", "衝擊"]
+       "取消", "火災", "事故", "停產", "弱勢", "走弱", "回檔", "降評", "降等", "淡季", "衝擊", "降目標價", "下調目標價", "續挫", "跌逾", "殺盤",
+       "風險", "難放心", "倒閉", "破產", "貶值", "暴雷", "見頂", "泡沫", "崩跌", "利空", "制裁", "關稅", "撤資", "賣壓沉重", "雙殺", "重貶", "斷頭", "收黑", "走低", "大賣", "倒貨", "急殺", "偏空", "看空"]
+
+
+MACRO_BAD = ["殖利率", "通膨", "油價", "美元指數", "失業率", "公債利率", "CPI", "PCE"]   # 這些東西「創新高、攀升」對股市是壞消息
+UP_WORDS = {"創新高", "新高", "攀升", "增溫", "大增", "飆", "創高", "強勁", "上調", "調升"}
 
 
 def sentiment(text):
@@ -40,10 +46,26 @@ def sentiment(text):
     # 「創新高」已含「新高」，避免重複計分
     pos = [w for w in pos if not any(w != o and w in o for o in pos)]
     neg = [w for w in neg if not any(w != o and w in o for o in neg)]
+    if any(m in t for m in MACRO_BAD):
+        flip = [w for w in pos if w in UP_WORDS]
+        pos = [w for w in pos if w not in UP_WORDS]
+        neg = neg + flip
+    if "獲利了結" in pos:
+        pos.remove("獲利了結")
+        neg.append("獲利了結")
     p, n = len(pos), len(neg)
     if p + n == 0:
         return 0.0, []
     return (p - n) / (p + n + 1.0), pos[:3] + neg[:3]
+
+
+def sentiment2(title, summ=""):
+    """標題為主；標題看不出多空時才參考摘要（打五折）。"""
+    sc, w = sentiment(title)
+    if w:
+        return sc, w
+    sc2, w2 = sentiment((summ or "")[:80])
+    return sc2 * 0.5, w2
 
 
 def _clean(s):
@@ -74,7 +96,7 @@ def fetch_cnyes(days=4, max_pages=8):
                     continue
                 title = _clean(it.get("title"))
                 summ = _clean(it.get("summary") or it.get("content"))[:160]
-                sc, words = sentiment(title + " " + summ[:80])
+                sc, words = sentiment2(title, summ)
                 items.append({"id": it.get("newsId"), "t": title, "s": summ, "at": at, "src": "鉅亨網",
                               "url": "https://news.cnyes.com/news/id/%s" % it.get("newsId"),
                               "codes": [c for c in (it.get("stock") or []) if re.fullmatch(r"\w{4,6}", str(c))],
@@ -113,7 +135,7 @@ def fetch_yahoo_market():
                 tzinfo=dt.timezone.utc).timestamp()) if p else 0
         except Exception:
             at = 0
-        sc, words = sentiment(title + " " + summ[:80])
+        sc, words = sentiment2(title, summ)
         out.append({"t": title, "s": summ, "at": at, "src": "Yahoo股市", "url": l.group(1).strip() if l else "",
                     "codes": [], "cat": "market", "sent": round(sc, 3), "kw": words})
     return out
@@ -183,13 +205,13 @@ def fetch_alerts(day):
     return warn, disp
 
 
-def collect_news(day):
+def collect_news(day, trade_day=None):
     """抓當天的消息面資料存成 parts/news/<day>.json.gz（同一天重抓會合併）。"""
     path = os.path.join(NEWS_DIR, day + ".json.gz")
     old = read_json(path, {}) or {}
     items = fetch_cnyes() + fetch_yahoo_market()
     mops = fetch_mops()
-    warn, disp = fetch_alerts(day)
+    warn, disp = fetch_alerts(trade_day or day)
     # 合併舊資料（同日多次更新）
     seen = set((it.get("url") or it.get("t")) for it in items)
     for it in old.get("items", []):

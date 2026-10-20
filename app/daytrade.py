@@ -379,7 +379,9 @@ def run(D, A_all, say=None):
 
     def pick(side):
         key = "wl" if side == "long" else "ws"
-        sel = [r for r in rows if r[key] is not None]
+        al = getattr(D, "alerts", None) or {"warn": {}, "disp": {}}
+        # 處置股採人工撮合、需預收款券，實際上無法當沖，直接排除
+        sel = [r for r in rows if r[key] is not None and r["c"] not in al["disp"]]
         sel.sort(key=lambda r: (-r[key], -r["p"] if side == "long" else r["p"]))
         out = []
         for r in sel[:30]:
@@ -391,7 +393,8 @@ def run(D, A_all, say=None):
             out.append({"c": r["c"], "n": r["n"], "m": r["m"], "px": r["px"], "chg": round(r["chg"], 4), "ok": ok,
                         "score": round(win * 100, 1), "win": round(win, 3), "avg": round(avg, 4),
                         "tp": None if tp is None else round(tp, 4), "sl": None if sl is None else round(sl, 4),
-                        "atr": r["atr"], "val": r["val"], "why": why})
+                        "atr": r["atr"], "val": r["val"], "why": why,
+                        "al": 1 if r["c"] in al["warn"] else 0})
         return out
 
     roll = []

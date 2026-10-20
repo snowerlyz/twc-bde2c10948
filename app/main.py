@@ -176,15 +176,17 @@ def analyze(prog=None):
     write_json(os.path.join(RESULTS, "futures.json"), fut)
     if dt:
         write_json(os.path.join(RESULTS, "daytrade.json"), dt)
+    res["model"]["market_check"] = mkt.get("check")
+    res["model"]["market_rel"] = {hn: {k: mkt["horizons"][hn].get(k) for k in ("raw", "rel", "rel_corr", "score")} for hn in HN}
     write_json(os.path.join(RESULTS, "model.json"), res["model"])
     snapinfo = read_json(os.path.join(DB, "snapshot", "info.json"), {}) or {}
     latest = {
         "day": D.days[-1], "days": D.T, "first_day": D.days[0],
         "generated": now_tw().strftime("%Y-%m-%d %H:%M"),
-        "market": {k: v for k, v in mkt.items()},
+        "market": {k: v for k, v in mkt.items() if k != "check"},
         "industries": res["industries"],
         "stocks": stocks,
-        "model": {hn: {k: res["model"]["horizons"][hn][k] for k in ("label", "top_hit", "base_hit", "spread_avg", "spread_win", "eval_days", "ic_avg")}
+        "model": {hn: {k: res["model"]["horizons"][hn][k] for k in ("label", "top_hit", "base_hit", "spread_avg", "spread_win", "eval_days", "ic_avg", "rel")}
                   for hn in HN},
         "snapshot": snapinfo,
         "version": RESULT_VERSION,

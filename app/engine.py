@@ -18,16 +18,17 @@ from array import array
 
 from util import DB, RESULTS, is_etf, is_stock_code, log, now_tw, read_json, write_json
 from collector import part_path, month_path
+from extra import sentiment as _senti, sentiment2 as _senti2
 
 NAN = float("nan")
 H = {"short": 5, "mid": 20, "long": 60}
 HN = ["short", "mid", "long"]
-H_LABEL = {"short": "短期（約 1 週）", "mid": "中期（約 1 個月）", "long": "長期（約 3 個月）"}
-HALF_LIFE = {"short": 40, "mid": 60, "long": 90}
+H_LABEL = {"short": "短期（約 1 週，5 個交易日）", "mid": "中期（約 1 個月，20 個交易日）", "long": "長期（約 3 個月，60 個交易日）"}
+HALF_LIFE = json.loads(os.environ["TWC_HL"]) if os.environ.get("TWC_HL") else {"short": 120, "mid": 150, "long": 90}
 CAL_WIN = {"short": 60, "mid": 80, "long": 100}
-SHRINK_K = 20.0
+SHRINK_K = float(os.environ.get("TWC_SK", "30"))
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
-ENGINE_VERSION = 5
+ENGINE_VERSION = 6
 
 
 def isnan(x):
@@ -73,6 +74,9 @@ FACTORS = [
     ("bpy", "股價淨值比（越低越便宜）", "基本面", (0.000, 0.005, 0.010)),
     ("yld", "殖利率", "基本面", (0.000, 0.005, 0.010)),
     ("om", "營業利益率", "基本面", (0.000, 0.005, 0.010)),
+    ("news_sent", "新聞與公告的利多利空", "消息面", (0.010, 0.005, 0.000)),
+    ("news_cnt", "新聞熱度（近 3 天則數）", "消息面", (0.000, 0.000, 0.000)),
+    ("alert", "列為注意股／處置股", "消息面", (-0.005, -0.005, 0.000)),
 ]
 FKEYS = [f[0] for f in FACTORS]
 FNAME = {f[0]: f[1] for f in FACTORS}
@@ -281,7 +285,136 @@ def load_data(max_days=320):
     for ym in sorted(set(d[:6] for d in days)):
         D.txf.update(read_json(month_path("txf_inst", ym), {}) or {})
         D.pc.update(read_json(month_path("pc", ym), {}) or {})
+    load_news(D)
+    load_global(D)
     return D
+
+
+# ====================================================================== 消息面與國際市場
+
+NEWS_WIN = 3      # 個股消息看最近 3 個交易日
+
+
+def _tw_date(ts):
+    import datetime as _dt
+    return _dt.datetime.utcfromtimestamp(ts + 8 * 3600).strftime("%Y%m%d")
+
+
+def load_news(D):
+    """把每天存下的新聞、重大訊息、注意／處置股整理成逐日資料。
+    一則新聞算在「發布日（台北時間）」當天；收盤後的新聞也算當天，因為分數是收盤後算、隔天才用。"""
+    days = D.days
+    ndir = os.path.join(DB, "parts", "news")
+    files = sorted(f[:8] for f in os.listdir(ndir) if f.endswith(".json.gz")) if os.path.isdir(ndir) else []
+    D.news_days, D.news_mkt, D.news_latest = {}, [NAN] * D.T, None
+    D.alerts = {"warn": {}, "disp": {}}
+    if not files:
+        return
+    items, seen, mops = [], set(), []
+    alerts_by_day = {}
+    for f in files:
+        j = read_json(os.path.join(ndir, f + ".json.gz")) or {}
+        for it in j.get("items", []):
+            k = it.get("url") or it.get("t")
+            if k in seen:
+                continue
+            seen.add(k)
+            it["d"] = _tw_date(it.get("at") or 0)
+            # 每次都用最新的詞庫重算，詞庫改進後舊新聞也一併更新
+            it["sent"], it["kw"] = _senti2(it.get("t") or "", it.get("s") or "")
+            items.append(it)
+        for m in j.get("mops", []):
+            k = ("m", m.get("c"), m.get("t"))
+            if k in seen:
+                continue
+            seen.add(k)
+            m["sent"] = _senti(m.get("t") or "")[0]
+            mops.append(m)
+        alerts_by_day[f] = (j.get("warn") or {}, j.get("disp") or {})
+    D.news_latest = files[-1]
+    # 最新一份若還沒有注意股名單（例如盤中抓的），沿用前一份
+    w_last = alerts_by_day[files[-1]][0] or (alerts_by_day[files[-2]][0] if len(files) > 1 else {})
+    D.alerts = {"warn": w_last, "disp": alerts_by_day[files[-1]][1] or (alerts_by_day[files[-2]][1] if len(files) > 1 else {})}
+    fs = set(files)
+    # 每則消息對應到「發布日當天或之後的第一個交易日」
+    import bisect
+    def tidx(d):
+        return bisect.bisect_left(days, d)
+    per_t = {}
+    for it in items:
+        t = tidx(it["d"])
+        if t >= D.T:
+            t = D.T - 1
+        per_t.setdefault(t, []).append(("n", it))
+    for m in mops:
+        if not m.get("d"):
+            continue
+        t = tidx(m["d"])
+        if t >= D.T:
+            t = D.T - 1
+        per_t.setdefault(t, []).append(("m", m))
+    D.news_items, D.mops_items = items, mops
+    # 哪些交易日有被消息資料涵蓋（當天或隔一天有抓過）
+    covered = [days[t] in fs or (t + 1 < D.T and days[t + 1] in fs) or (t == D.T - 1 and files[-1] >= days[t])
+               for t in range(D.T)]
+    first = files[0]
+    for t in range(D.T):
+        if not covered[t] or days[t] < first:
+            continue
+        sent, cnt = {}, {}
+        msum = mn = 0
+        for tt in range(max(0, t - NEWS_WIN + 1), t + 1):
+            for kind, it in per_t.get(tt, []):
+                if kind == "n":
+                    codes = it.get("codes") or []
+                    w = 1.0 / max(1, len(codes)) ** 0.5
+                    for c in codes:
+                        sent[c] = sent.get(c, 0.0) + it.get("sent", 0) * w
+                        cnt[c] = cnt.get(c, 0) + 1
+                    if tt >= t - 1:
+                        msum += it.get("sent", 0)
+                        mn += 1
+                else:
+                    c = it["c"]
+                    sent[c] = sent.get(c, 0.0) + it.get("sent", 0) * 0.7
+                    cnt[c] = cnt.get(c, 0) + 1
+        wd = alerts_by_day.get(days[t]) or (alerts_by_day.get(days[t + 1]) if t + 1 < D.T else None)
+        al = {}
+        if wd:
+            for c in wd[0]:
+                al[c] = 1.0
+            for c in wd[1]:
+                al[c] = 2.0
+        D.news_days[t] = {"s": sent, "n": cnt, "a": al if wd else None}
+        if mn >= 10:
+            D.news_mkt[t] = msum / mn
+
+
+GLOBAL_DEF = [
+    # 代號, 名稱, 單位說明
+    ("^SOX", "費城半導體"), ("^IXIC", "那斯達克"), ("^GSPC", "標普 500"), ("TSM", "台積電 ADR"),
+    ("^VIX", "恐慌指數 VIX"), ("^TNX", "美 10 年債殖利率"), ("TWD=X", "美元兌新台幣"), ("DX-Y.NYB", "美元指數"),
+    ("^N225", "日經 225"), ("CL=F", "西德州原油"),
+]
+
+
+def load_global(D):
+    """國際市場序列對齊到台股交易日：台股第 t 天只用「日期早於當天」的海外收盤（美股收盤時台股已收），避免偷看未來。"""
+    g = read_json(os.path.join(DB, "global.json"), {}) or {}
+    D.glob, D.glob_raw = {}, g
+    import bisect
+    for sym, _ in GLOBAL_DEF:
+        x = g.get(sym)
+        if not x or not x.get("s"):
+            continue
+        ds = sorted(x["s"])
+        vs = [x["s"][d] for d in ds]
+        out = [NAN] * D.T
+        for t, d in enumerate(D.days):
+            j = bisect.bisect_left(ds, d) - 1
+            if j >= 0 and (D.days[t] > ds[j]):
+                out[t] = vs[j]
+        D.glob[sym] = out
 
 
 # ====================================================================== 個股序列與因子
@@ -320,7 +453,7 @@ def adjust_series(s):
     return A, traded
 
 
-def stock_factors(s, A, traded, fund_days, code, T):
+def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
     """回傳 {因子: list(長度 T)}，資料不足處為 NaN。"""
     F = {}
     ret = [NAN] * T
@@ -456,6 +589,14 @@ def stock_factors(s, A, traded, fund_days, code, T):
         F["bpy"][t] = 1.0 / pb if pb and pb > 0 else NAN
         F["yld"][t] = f.get("yld") if f.get("yld") is not None else NAN
         F["om"][t] = _clip(f.get("om"), -100, 100)
+    # 消息面：只有在有抓消息的日子才有值（沒有消息＝0，代表「沒有新聞」而非缺資料）
+    for k in ("news_sent", "news_cnt", "alert"):
+        F[k] = [NAN] * T
+    for t, nd in (news_days or {}).items():
+        F["news_sent"][t] = max(-3.0, min(3.0, nd["s"].get(code, 0.0)))
+        F["news_cnt"][t] = math.log1p(nd["n"].get(code, 0))
+        if nd["a"] is not None:
+            F["alert"][t] = nd["a"].get(code, 0.0)
     return F, ret, val20, ma5, ma20, ma60
 
 
@@ -479,6 +620,17 @@ MKT_FACTORS = [
     ("m_foi", "外資台指期留倉", (0.05, 0.05, 0.03)),
     ("m_foi5", "外資台指期留倉變化（5 日）", (0.10, 0.05, 0.00)),
     ("m_pc", "選擇權買賣權未平倉比", (0.05, 0.05, 0.00)),
+    ("g_sox5", "費城半導體近一週漲跌", (0.08, 0.05, 0.03)),
+    ("g_sox20", "費城半導體近一個月漲跌", (0.03, 0.05, 0.05)),
+    ("g_ndx5", "那斯達克近一週漲跌", (0.05, 0.03, 0.00)),
+    ("g_spx60", "標普 500 與季線距離", (0.03, 0.05, 0.05)),
+    ("g_adr", "台積電 ADR 溢價", (0.05, 0.03, 0.00)),
+    ("g_vix", "美股恐慌指數 VIX 高低", (-0.03, 0.00, 0.03)),
+    ("g_vix5", "VIX 近一週變化", (-0.05, -0.03, 0.00)),
+    ("g_tnx20", "美債殖利率近一個月變化", (-0.03, -0.05, -0.05)),
+    ("g_twd20", "新台幣近一個月貶值幅度", (-0.05, -0.08, -0.05)),
+    ("g_dxy20", "美元指數近一個月變化", (-0.02, -0.03, -0.03)),
+    ("m_news", "市場新聞多空氣氛", (0.05, 0.03, 0.00)),
 ]
 
 
@@ -560,6 +712,40 @@ def market_model(D, stock_close, stock_fi):
         if t >= 5 and not isnan(foi[t]) and not isnan(foi[t - 5]):
             raw["m_foi5"][t] = foi[t] - foi[t - 5]
         raw["m_pc"][t] = pcr[t]
+    # ---- 國際市場
+    G = getattr(D, "glob", {}) or {}
+
+    def gchg(sym, n, t):
+        x = G.get(sym)
+        if not x or t - n < 0 or isnan(x[t]) or isnan(x[t - n]) or x[t - n] == 0:
+            return NAN
+        return x[t] / x[t - n] - 1
+
+    spx = G.get("^GSPC")
+    spx60 = sma(spx, 60) if spx else None
+    c2330 = (stock_close.get("2330") or ([NAN] * T, None))[0]
+    for t in range(T):
+        raw["g_sox5"][t] = gchg("^SOX", 5, t)
+        raw["g_sox20"][t] = gchg("^SOX", 20, t)
+        raw["g_ndx5"][t] = gchg("^IXIC", 5, t)
+        if spx and not isnan(spx60[t]) and not isnan(spx[t]):
+            raw["g_spx60"][t] = spx[t] / spx60[t] - 1
+        tsm, twd = G.get("TSM"), G.get("TWD=X")
+        if tsm and twd and not isnan(tsm[t]) and not isnan(twd[t]) and not isnan(c2330[t]) and c2330[t] > 0:
+            raw["g_adr"][t] = tsm[t] * twd[t] / (5 * c2330[t]) - 1
+        vix = G.get("^VIX")
+        if vix and not isnan(vix[t]):
+            raw["g_vix"][t] = vix[t]
+            if t >= 5 and not isnan(vix[t - 5]):
+                raw["g_vix5"][t] = vix[t] - vix[t - 5]
+        tnx = G.get("^TNX")
+        if tnx and t >= 20 and not isnan(tnx[t]) and not isnan(tnx[t - 20]):
+            raw["g_tnx20"][t] = tnx[t] - tnx[t - 20]
+        raw["g_twd20"][t] = gchg("TWD=X", 20, t)
+        raw["g_dxy20"][t] = gchg("DX-Y.NYB", 20, t)
+        nm = getattr(D, "news_mkt", None)
+        if nm:
+            raw["m_news"][t] = nm[t]
     # 時間序列 z 分數（相對自己過去 120 天）
     Z = {}
     for k in raw:
@@ -576,63 +762,116 @@ def market_model(D, stock_close, stock_fi):
             if sd > 0:
                 z[t] = max(-3, min(3, (x[t] - m) / sd))
         Z[k] = z
-    out = {"horizons": {}, "raw": {}, "series": {}}
+    out = {"horizons": {}, "raw": {}, "series": {}, "check": {}}
     last = T - 1
+    fut_ret = {}
     for hn in HN:
         h = H[hn]
+        fut_ret[hn] = [tx[t + h] / tx[t] - 1 if t + h < T and not isnan(tx[t + h]) and not isnan(tx[t]) else NAN
+                       for t in range(T)]
+    K = 150.0
+
+    def mweights(hn, upto):
+        """只用 upto（含）以前「結果已揭曉」的資料學權重：避免偷看未來。"""
+        h = H[hn]
+        fr = fut_ret[hn]
         weights = {}
         for k, name, pri in MKT_FACTORS:
             prior = dict(zip(HN, pri))[hn]
             xs, ys = [], []
-            for t in range(T - h):
-                if not isnan(Z[k][t]) and not isnan(tx[t + h]):
-                    xs.append(Z[k][t])
-                    ys.append(tx[t + h] / tx[t] - 1)
+            zk = Z[k]
+            for t in range(0, upto - h + 1):
+                if not isnan(zk[t]) and not isnan(fr[t]):
+                    xs.append(zk[t])
+                    ys.append(fr[t])
             c = pearson(xs, ys) if len(xs) >= 40 else None
             n_info = len(xs) / max(1.0, h / 5.0)
-            K = 150.0
-            w = prior if c is None else (n_info / (n_info + K)) * c + (K / (n_info + K)) * prior
-            weights[k] = w
+            weights[k] = prior if c is None else (n_info / (n_info + K)) * c + (K / (n_info + K)) * prior
+        return weights
+
+    def composite(weights, t):
         sw = sum(abs(w) for w in weights.values()) or 1.0
+        tot, used = 0.0, 0
+        for k, w in weights.items():
+            z = Z[k][t]
+            if not isnan(z):
+                tot += w * z
+                used += 1
+        return tot / sw * 1.5 if used >= 4 else NAN
+
+    for hn in HN:
+        h = H[hn]
+        fr = fut_ret[hn]
+        # 逐日（由舊到新）重新學權重、算當天讀數；每 5 天更新一次權重以節省時間
         comp = [NAN] * T
+        wcur = None
         for t in range(T):
-            tot = 0.0
-            used = 0
-            for k in weights:
-                z = Z[k][t]
-                if not isnan(z):
-                    tot += weights[k] * z
-                    used += 1
-            if used >= 4:
-                comp[t] = tot / sw * 1.5
+            if wcur is None or t % 5 == 0 or t == last:
+                wcur = mweights(hn, t)
+            comp[t] = composite(wcur, t)
+        weights = wcur
+        # 每一天的分數（同樣只用當天以前的資料）
+        score_s = [NAN] * T
+        for t in range(T):
+            ct = comp[t]
+            if isnan(ct):
+                continue
+            past = [c for c in comp[:t] if not isnan(c)]
+            if len(past) >= 20:
+                pct_t = (sum(1 for c in past if c < ct) + 0.5 * sum(1 for c in past if c == ct)) / len(past)
+            else:
+                pct_t = 0.5 + 0.5 * math.tanh(ct)
+            sc = 50 + (pct_t - 0.5) * 70
+            sims = [(comp[u], fr[u]) for u in range(0, t - h + 1) if not isnan(comp[u]) and not isnan(fr[u])]
+            if len(sims) >= 15:
+                near = sorted(sims, key=lambda p: abs(p[0] - ct))[:max(15, len(sims) // 4)]
+                up_s = (sum(1 for _, r in near if r > 0) + 2.5) / (len(near) + 5)
+                sc = 0.6 * sc + 0.4 * up_s * 100
+            score_s[t] = sc
+        # 可信度：最近（結果已揭曉的）分數與之後實際漲跌的相關性
+        kn = [(score_s[t], fr[t]) for t in range(max(40, last - h - 150), last - h + 1)
+              if 0 <= t < T and not isnan(score_s[t]) and not isnan(fr[t])]
+        mc = pearson([a for a, _ in kn], [b for _, b in kn]) if len(kn) >= 30 else None
+        rel_m = 0.5 if mc is None else max(0.25, min(1.0, mc / 0.2))
         cl = comp[last] if not isnan(comp[last]) else 0.0
-        # 分數＝今天的讀數在過去一年裡排第幾（百分位），換算到 15～85 分。
-        # 用排名而不是絕對值，避免幾個指標同時極端時分數被推到 10 分以下。
         past = [c for c in comp[:last] if not isnan(c)]
-        if len(past) >= 20:
-            below = sum(1 for c in past if c < cl) + 0.5 * sum(1 for c in past if c == cl)
-            pct = below / len(past)
-        else:
-            pct = 0.5 + 0.5 * math.tanh(cl)
-        score = 50 + (pct - 0.5) * 70
-        # 過去類似讀數之後的實際表現
-        sims = [(comp[t], tx[t + h] / tx[t] - 1) for t in range(T - h) if not isnan(comp[t])]
+        pct = (sum(1 for c in past if c < cl) + 0.5 * sum(1 for c in past if c == cl)) / len(past) if len(past) >= 20 \
+            else 0.5 + 0.5 * math.tanh(cl)
+        raw_score = score_s[last] if not isnan(score_s[last]) else 50 + (pct - 0.5) * 70
+        score = 50 + (raw_score - 50) * rel_m
+        sims = [(comp[t], fr[t]) for t in range(T - h) if not isnan(comp[t]) and not isnan(fr[t])]
         near = sorted(sims, key=lambda p: abs(p[0] - cl))[:max(15, len(sims) // 4)]
         up = sum(1 for _, r in near if r > 0)
-        # 再用「過去類似讀數之後大盤實際漲跌」校正，讓分數與歷史結果一致（樣本少時向 50% 收斂）
-        if near:
-            up_s = (up + 2.5) / (len(near) + 5)
-            score = 0.6 * score + 0.4 * up_s * 100
         contrib = sorted(((weights[k] * Z[k][last], k) for k in weights if not isnan(Z[k][last])), reverse=True)
         out["horizons"][hn] = {
             "score": round(score, 1),
             "label": label_of(score),
-            "pct": round(pct, 3),
+            "pct": round(pct, 3), "raw": round(raw_score, 1), "rel": round(rel_m, 3),
+            "rel_corr": None if mc is None else round(mc, 3),
             "similar_n": len(near), "similar_up": up,
             "similar_avg": round(sum(r for _, r in near) / len(near) * 100, 2) if near else None,
             "pos": [MKT_NAME[k] for c_, k in contrib[:3] if c_ > 0.05],
             "neg": [MKT_NAME[k] for c_, k in contrib[::-1][:3] if c_ < -0.05],
             "weights": {k: round(w, 4) for k, w in weights.items()},
+        }
+        # ---- 實測：每天當時算出的大盤分數 vs 之後真正的漲跌（前 40 天暖機不計）
+        ev = [(t, score_s[t], fr[t]) for t in range(40, T) if not isnan(score_s[t]) and not isnan(fr[t])]
+        bull = [r for _, sc, r in ev if sc >= 55]
+        bear = [r for _, sc, r in ev if sc <= 45]
+        neut = [r for _, sc, r in ev if 45 < sc < 55]
+        hit = sum(1 for r in bull if r > 0) + sum(1 for r in bear if r < 0)
+        out["check"][hn] = {
+            "n": len(ev),
+            "bull_n": len(bull), "bull_hit": round(sum(1 for r in bull if r > 0) / len(bull), 3) if bull else None,
+            "bull_avg": round(sum(bull) / len(bull), 4) if bull else None,
+            "bear_n": len(bear), "bear_hit": round(sum(1 for r in bear if r < 0) / len(bear), 3) if bear else None,
+            "bear_avg": round(sum(bear) / len(bear), 4) if bear else None,
+            "neut_n": len(neut),
+            "call_hit": round(hit / (len(bull) + len(bear)), 3) if bull or bear else None,
+            "base_up": round(sum(1 for _, _, r in ev if r > 0) / len(ev), 3) if ev else None,
+            "corr": round(pearson([sc for _, sc, _ in ev], [r for _, _, r in ev]) or 0, 3) if len(ev) >= 30 else None,
+            "series": [[D.days[t], round(score_s[t], 1), None if isnan(fr[t]) else round(fr[t], 4)]
+                       for t in range(max(40, T - 160), T) if not isnan(score_s[t])],
         }
     out["raw"] = {k: (None if isnan(raw[k][last]) else raw[k][last]) for k in raw}
     n = min(T, 120)
@@ -655,7 +894,60 @@ def market_model(D, stock_close, stock_fi):
     out["breadth"] = None if isnan(br[last]) else br[last]
     out["up"] = D.mkt["up"][last]
     out["down"] = D.mkt["down"][last]
+    out["global"] = global_view(D)
+    out["news"] = market_news(D)
     return out
+
+
+def global_view(D):
+    g = getattr(D, "glob_raw", {}) or {}
+    rows = []
+    for sym, name in GLOBAL_DEF:
+        x = g.get(sym)
+        if not x or not x.get("s"):
+            continue
+        ds = sorted(x["s"])
+        vs = [x["s"][d] for d in ds]
+        if len(vs) < 25:
+            continue
+
+        def ch(n):
+            return vs[-1] / vs[-1 - n] - 1 if vs[-1 - n] else None
+        row = {"sym": sym, "name": name, "day": ds[-1], "v": vs[-1],
+               "c1": ch(1), "c5": ch(5), "c20": ch(20), "spark": vs[-60:]}
+        if sym == "^TNX":   # 殖利率看「差幾個百分點」比較直覺
+            row.update(c1=vs[-1] - vs[-2], c5=vs[-1] - vs[-6], c20=vs[-1] - vs[-21], unit="pt")
+        rows.append(row)
+    return {"at": g.get("_at"), "rows": rows}
+
+
+def market_news(D):
+    items = getattr(D, "news_items", None) or []
+    if not items:
+        return None
+    lst = sorted((it for it in items if it.get("cat") in ("headline", "market", "tw_stock")),
+                 key=lambda x: -(x.get("at") or 0))
+    recent = [it for it in lst if (it.get("at") or 0) >= (lst[0].get("at") or 0) - 2 * 86400] if lst else []
+    pos = sum(1 for it in recent if it.get("sent", 0) > 0.05)
+    neg = sum(1 for it in recent if it.get("sent", 0) < -0.05)
+    mood = sum(it.get("sent", 0) for it in recent) / len(recent) if recent else 0
+    heads = [{"t": it["t"], "u": it.get("url"), "src": it.get("src"), "at": it.get("at"), "s": it.get("sent", 0),
+              "c": (it.get("codes") or [])[:3]} for it in lst if it.get("cat") in ("headline", "market")][:14]
+    return {"day": D.news_latest, "n": len(recent), "pos": pos, "neg": neg, "mood": round(mood, 3), "heads": heads,
+            "warn_n": len(D.alerts["warn"]), "disp_n": len(D.alerts["disp"])}
+
+
+def stock_news(D, code):
+    items = getattr(D, "news_items", None) or []
+    if not items and not getattr(D, "mops_items", None):
+        return None
+    lst = sorted((it for it in items if code in (it.get("codes") or [])), key=lambda x: -(x.get("at") or 0))[:10]
+    mops = sorted((m for m in (getattr(D, "mops_items", None) or []) if m.get("c") == code),
+                  key=lambda m: m.get("d") or "", reverse=True)[:6]
+    return {"items": [{"t": it["t"], "u": it.get("url"), "src": it.get("src"), "at": it.get("at"), "s": it.get("sent", 0),
+                       "kw": it.get("kw", [])} for it in lst],
+            "mops": [{"t": m["t"], "d": m.get("d"), "s": m.get("sent", 0)} for m in mops],
+            "warn": D.alerts["warn"].get(code), "disp": D.alerts["disp"].get(code)}
 
 
 MKT_NAME = {k: n for k, n, _ in MKT_FACTORS}
@@ -754,6 +1046,15 @@ def reason_text(k, v, sign):
         return "殖利率 %.2f%%" % v
     if k == "om":
         return "營業利益率 %.1f%%" % v
+    if k == "news_sent":
+        if abs(v) < 0.05:
+            return None
+        return "近 3 天新聞與公告%s" % ("偏利多" if v > 0 else "偏利空")
+    if k == "news_cnt":
+        n = int(round(math.exp(v) - 1))
+        return "近 3 天有 %d 則相關新聞（市場關注度%s）" % (n, "高" if n >= 5 else "普通") if n >= 2 else None
+    if k == "alert":
+        return "被列為處置股（交易受限制）" if v >= 2 else ("被列為注意股（近期漲跌或成交異常）" if v >= 1 else None)
     return None
 
 
@@ -783,7 +1084,7 @@ def run_engine(prog=None):
     for i, code in enumerate(codes):
         s = D.raw[code]
         A, traded = adjust_series(s)
-        F, ret, val20, ma5, ma20, ma60 = stock_factors(s, A, traded, D.fund_days, code, T)
+        F, ret, val20, ma5, ma20, ma60 = stock_factors(s, A, traded, D.fund_days, code, T, D.news_days)
         for k in FKEYS:
             FA[k][i] = array("f", F[k])
         A_all[i] = array("d", A)
@@ -984,7 +1285,7 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
              "first_day": D.days[0], "last_day": D.days[-1]}
     for hn in HN:
         h = H[hn]
-        top_up = top_n = all_up = all_n = 0
+        top_up = top_n = all_up = all_n = bot_dn = bot_n = 0
         spreads = []
         for t, pct in pct_hist[hn].items():
             if t + h > last:
@@ -1005,9 +1306,12 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
                     top_up += r > 0
                 elif p <= 0.2:
                     bots.append(r)
+                    bot_n += 1
+                    bot_dn += r < 0
             if tops and bots:
                 spreads.append((t, sum(tops) / len(tops) - sum(bots) / len(bots)))
         ics = comp_ic[hn]
+        rel, rel_ic = reliability(ics)
         roll = []
         for j in range(len(ics)):
             w = [c for _, c in ics[max(0, j - 19):j + 1]]
@@ -1027,10 +1331,14 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
             "eval_days": len(spreads),
             "top_hit": round(top_up / top_n, 4) if top_n else None,
             "base_hit": round(all_up / all_n, 4) if all_n else None,
+            "bot_fall": round(bot_dn / bot_n, 4) if bot_n else None,
+            "base_fall": round(1 - all_up / all_n, 4) if all_n else None,
+            "recent": recent_check(D, A_all, val20_all, pct_hist[hn], h, mkt),
             "spread_avg": round(sum(s for _, s in spreads) / len(spreads), 5) if spreads else None,
             "spread_win": round(sum(1 for _, s in spreads if s > 0) / len(spreads), 4) if spreads else None,
             "ic_roll": roll[-120:],
             "ic_avg": round(sum(c for _, c in ics) / len(ics), 4) if ics else None,
+            "rel": round(rel, 3), "rel_ic": None if rel_ic is None else round(rel_ic, 4),
             "factors": fac,
             "calib": [None if c is None else {k: round(v, 4) for k, v in c.items()} for c in calib[hn]],
             "weight_trend": {k: [round(w[k], 4) for w in wh] for k in [f["k"] for f in fac[:8]]},
@@ -1054,7 +1362,9 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
                 hz[hn] = None
                 continue
             m_score = mkt["horizons"][hn]["score"]
-            final = 0.75 * pct * 100 + 0.25 * m_score
+            # 可信度：模型最近（事後對答案）若沒有預測力，個股分數就往 50 收斂，不硬給強烈看多／看空
+            rel = model["horizons"][hn]["rel"]
+            final = 0.75 * (50 + (pct * 100 - 50) * rel) + 0.25 * m_score
             cb = calib[hn]
             b = min(9, int(pct * 10))
             cal = cb[b] if cb[b] else None
@@ -1080,7 +1390,7 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
                 if txt:
                     neg.append(txt)
             hz[hn] = {
-                "score": round(final, 1), "pct": round(pct, 4), "label": label_of(final),
+                "score": round(final, 2), "pct": round(pct, 4), "label": label_of(final),
                 "up": round(cal["up"], 3) if cal else None,
                 "avg": round(cal["avg"], 4) if cal else None,
                 "lo": round(cal["p20"], 4) if cal else None,
@@ -1097,6 +1407,10 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
             "s": [hz[hn]["score"] if hz[hn] else None for hn in HN],
             "etf": is_etf(code),
         }
+        if code in D.alerts["disp"]:
+            row["al"] = 2
+        elif code in D.alerts["warn"]:
+            row["al"] = 1
         stocks.append(row)
         details[code] = (i, hz)
 
@@ -1116,6 +1430,56 @@ def build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, R, W, pct_hist, i
 
     return {"stocks": stocks, "details": details, "model": model, "market": mkt,
             "industries": industries, "calib": calib, "R": R, "W": W}
+
+
+REL_FULL = 0.04   # 個股排名與之後實際報酬的相關係數（IC）達 0.04 視為「有用」，給滿可信度
+
+
+def reliability(ics):
+    """用最近的實測 IC（只含結果已揭曉的日子）決定可信度 0～1。"""
+    if not ics:
+        return 0.5, None
+    a = [c for _, c in ics[-60:]]
+    b = [c for _, c in ics[-120:]]
+    m = 0.5 * sum(a) / len(a) + 0.5 * sum(b) / len(b)
+    n = len(b)
+    # 樣本少時保守一點
+    r = max(0.0, min(1.0, m / REL_FULL)) * min(1.0, n / 40.0)
+    return max(0.25, r), m
+
+
+def recent_check(D, A_all, val20_all, pct_by_t, h, mkt, n=10):
+    """對答案：h 個交易日前分數最高／最低的股票，到今天實際漲跌多少。"""
+    last = D.T - 1
+    t0 = last - h
+    pct = pct_by_t.get(t0)
+    if not pct:
+        return None
+    rows = []
+    for i, p in pct.items():
+        code = D.codes[i]
+        v = val20_all[i][t0]
+        if is_etf(code) or not (v == v and v >= 1e8):
+            continue
+        a0, a1 = A_all[i][t0], A_all[i][last]
+        if not (a0 == a0 and a1 == a1 and a0 > 0):
+            continue
+        rows.append((p, code, a1 / a0 - 1))
+    if len(rows) < 2 * n:
+        return None
+    rows.sort(reverse=True)
+    allr = [r for _, _, r in rows]
+    tx_full = D.mkt["taiex"]
+    txr = tx_full[last] / tx_full[t0] - 1 if tx_full[t0] == tx_full[t0] and tx_full[t0] else None
+
+    def pack(sub):
+        return [{"c": c, "n": D.names.get(c, c), "p": round(p, 3), "r": round(r, 4)} for p, c, r in sub]
+    top, bot = rows[:n], rows[-n:][::-1]
+    return {"from": D.days[t0], "to": D.days[last], "taiex": None if txr is None else round(txr, 4),
+            "all_avg": round(sum(allr) / len(allr), 4),
+            "top_avg": round(sum(r for _, _, r in top) / n, 4), "bot_avg": round(sum(r for _, _, r in bot) / n, 4),
+            "top_up": sum(1 for _, _, r in top if r > 0), "bot_dn": sum(1 for _, _, r in bot if r < 0),
+            "top": pack(top), "bot": pack(bot)}
 
 
 def stock_detail(code, i, hz, D, FA, A_all, n_hist=250):
@@ -1142,6 +1506,7 @@ def stock_detail(code, i, hz, D, FA, A_all, n_hist=250):
         "day": D.days[-1], "hist": hist, "chips": chips, "factors": factors,
         "fname": FNAME, "fgroup": FGROUP, "h": hz, "fund": D.fund.get(code, {}),
         "shares": D.shares.get(code),
+        "news": stock_news(D, code),
     }
 
 

@@ -7,7 +7,16 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const HZ = ["short", "mid", "long"];
 const HZ_NAME = ["短期", "中期", "長期"];
-const HZ_SPAN = ["約 1 週", "約 1 個月", "約 3 個月"];
+const HZ_SPAN = ["約 1 週・5 個交易日", "約 1 個月・20 個交易日", "約 3 個月・60 個交易日"];
+const HZ_SHORT = ["1 週", "1 個月", "3 個月"];
+const hzTag = (i) => `${HZ_NAME[i]}<small class="hzt">${HZ_SHORT[i]}</small>`;
+const hzFull = (i) => `${HZ_NAME[i]}（${HZ_SHORT[i]}）`;
+function relInfo(r) {
+  if (r == null) return { t: "—", c: "p-mid" };
+  if (r >= 0.7) return { t: "高", c: "p-up1" };
+  if (r >= 0.4) return { t: "中", c: "p-mid" };
+  return { t: "低", c: "p-dn1" };
+}
 const HZ_DAYS = ["一週", "一個月", "三個月"];
 const store = {
   get(k, d) { try { const v = localStorage.getItem("twc." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -59,7 +68,10 @@ function sbar(s) {
 
 // 名詞解釋
 const GLOSS = {
-  score: "0～100 分，50 為中立。由約 30 個技術、籌碼、基本面指標加權而成，權重每天依「這些指標過去實際預測得準不準」自動調整，並納入大盤氣氛。75 分以上為強烈看多、25 分以下為強烈看空。",
+  score: "0～100 分，50 為中立。由約 35 個技術、籌碼、基本面、消息面指標加權而成，權重每天依「這些指標過去實際預測得準不準」自動調整，並納入大盤氣氛（含美股、匯率等國際市場）。75 分以上為強烈看多、25 分以下為強烈看空。短期＝約 1 週（5 個交易日）、中期＝約 1 個月（20 個交易日）、長期＝約 3 個月（60 個交易日）。",
+  rel: "可信度：模型每天事後對答案，看最近一段時間分數高低和之後實際漲跌是否一致。可信度低代表最近不準，分數會自動往 50 收斂，避免給出過度自信的判斷；等模型重新變準，可信度會自動回升。",
+  news: "消息面：收集鉅亨網、Yahoo 股市的財經新聞與公開資訊觀測站重大訊息，用利多／利空關鍵字判斷每則消息偏多或偏空，再彙總到個股與大盤。關鍵字判斷是粗略的，請點開原文自行確認。",
+  glob: "國際市場：台股常跟著美股（特別是費城半導體）、台積電 ADR、美元與新台幣匯率、美債殖利率連動。這些數字已納入大盤分數，權重同樣由歷史資料檢驗後自動調整。美股數字為前一個美國交易日收盤。",
   upprob: "過去一段時間裡，分數落在同一區間的股票，在這段期間後實際上漲的比例。這是歷史統計，不是保證。",
   range: "同一分數區間的股票，過去實際報酬的中間 60%（第 20 到第 80 百分位）。",
   rec: "推薦度：綜合權證本身品質（價格是否合理、買賣價差、剩餘天數、價內外、時間價值損耗、槓桿）與標的股票的看多／看空分數。",
@@ -106,13 +118,16 @@ const ICON = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+  news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2V5Z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 16h4"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
 };
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
   ["#/", "總覽", "home"], ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
-  ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/model", "模型成績單", "model"], ["#/help", "使用說明", "help"],
+  ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/check", "實測對答案", "target"], ["#/model", "模型成績單", "model"], ["#/help", "使用說明", "help"],
 ];
 $("#nav").innerHTML = NAV.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
 $("#tabbar").innerHTML = NAV.slice(0, 6).map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
@@ -165,7 +180,7 @@ const starBtn = (c) => `<button class="star ${S.watch.includes(c) ? "on" : ""}" 
 
 // ====================================================================== 投資期間切換
 function renderSeg() {
-  $("#hzseg").innerHTML = HZ_NAME.map((n, i) => `<button role="tab" aria-selected="${i === S.hz}" class="${i === S.hz ? "on" : ""}" data-hz="${i}" title="${HZ_SPAN[i]}">${n}</button>`).join("");
+  $("#hzseg").innerHTML = HZ_NAME.map((n, i) => `<button role="tab" aria-selected="${i === S.hz}" class="${i === S.hz ? "on" : ""}" data-hz="${i}" title="${HZ_SPAN[i]}">${hzTag(i)}</button>`).join("");
 }
 $("#hzseg").addEventListener("click", (e) => {
   const b = e.target.closest("[data-hz]");
@@ -425,14 +440,14 @@ function stockRow(r, { mode = "one" } = {}) {
   const nm = `<div class="nm"><b>${esc(r.n)}</b><span>${r.c}　${esc(r.m)}${r.ind ? "・" + esc(r.ind) : ""}</span><span class="pxm small"> ${fmtPx(r.px)} ${chgHtml(r.chg)}</span></div>`;
   if (mode === "three") {
     return `<a class="row s3" href="#/stock/${r.c}">${nm}<div class="px">${fmtPx(r.px)}</div><div class="ch">${chgHtml(r.chg)}</div>
-      ${r.s.map((s, i) => `<div style="text-align:center">${pill(s, HZ_NAME[i] + "：" + labelOf(s))}</div>`).join("")}${starBtn(r.c)}</a>`;
+      ${r.s.map((s, i) => `<div style="text-align:center">${pill(s, HZ_NAME[i] + "（" + HZ_SPAN[i] + "）：" + labelOf(s))}</div>`).join("")}${starBtn(r.c)}</a>`;
   }
   return `<a class="row" href="#/stock/${r.c}">${nm}<div class="px">${fmtPx(r.px)}</div><div class="ch">${chgHtml(r.chg)}</div><div class="sb">${sbar(r.s[S.hz])}</div><div class="pm">${pill(r.s[S.hz])}</div></a>`;
 }
 function rowsHead3(sortKey, dir) {
   const b = (k, t) => `<button data-sort="${k}" class="${sortKey === k ? "on" : ""}">${t}${sortKey === k ? (dir > 0 ? " ↑" : " ↓") : ""}</button>`;
   return `<div class="row head s3"><div>${b("name", "股票")}</div><div class="hpx" style="text-align:right">${b("px", "股價")}</div><div class="hpx" style="text-align:right">${b("chg", "漲跌")}</div>
-    ${HZ_NAME.map((n, i) => `<div style="text-align:center">${b("s" + i, n)}</div>`).join("")}<div></div></div>`;
+    ${HZ_NAME.map((n, i) => `<div style="text-align:center">${b("s" + i, hzTag(i))}</div>`).join("")}<div></div></div>`;
 }
 
 // ====================================================================== 路由
@@ -457,6 +472,7 @@ async function route() {
     else if (page === "daytrade") await vDayTrade(tok);
     else if (page === "watch") await vWatch(tok);
     else if (page === "model") await vModel(tok);
+    else if (page === "check") await vCheck(tok);
     else if (page === "help") await vHelp(tok);
     else await vHome(tok);
   } catch (e) {
@@ -489,30 +505,31 @@ async function vHome(tok) {
   if (tok !== routeToken) return;
   view.innerHTML = `
   <h1 class="grad">今天的台股氣氛</h1>
-  <p class="lead">${dayFull(L.day)} 收盤資料・${HZ_NAME[S.hz]}（${HZ_SPAN[S.hz]}）觀點。上方可切換短期、中期、長期。</p>
+  <p class="lead">${dayFull(L.day)} 收盤資料・${HZ_NAME[S.hz]}（${HZ_SPAN[S.hz]}）觀點。上方可切換短期（1 週）、中期（1 個月）、長期（3 個月）。</p>
   <section class="card hero glow"><span class="glow-ring"></span>
-    <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div></div>
+    <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div>${mh.rel != null ? `<a class="relnote" href="#/check">可信度 <span class="pill ${relInfo(mh.rel).c}">${relInfo(mh.rel).t}</span></a>${help("rel")}` : ""}</div>
     <div class="hero-side">
       <div class="idx"><span class="muted">加權指數</span><span class="big" data-count="${M.taiex}" data-dec="2">${fmtPx(M.taiex)}</span><span class="chg">${chgHtml(M.taiex_chg)}</span></div>
-      <div class="hz3">${HZ.map((h, i) => `<button class="hzbox ${i === S.hz ? "on" : ""}" data-hz2="${i}"><div class="t">${HZ_NAME[i]}<span class="hsp">・${HZ_SPAN[i]}</span></div><div class="v" data-count="${Math.round(M.horizons[h].score)}" data-from="50">${Math.round(M.horizons[h].score)}</div><div class="l">${M.horizons[h].label}</div></button>`).join("")}</div>
+      <div class="hz3">${HZ.map((h, i) => `<button class="hzbox ${i === S.hz ? "on" : ""}" data-hz2="${i}"><div class="t">${HZ_NAME[i]}<span class="hsp">${HZ_SPAN[i].replace("・", "<br>")}</span></div><div class="v" data-count="${Math.round(M.horizons[h].score)}" data-from="50">${Math.round(M.horizons[h].score)}</div><div class="l">${M.horizons[h].label}</div></button>`).join("")}</div>
       <ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
     </div>
   </section>
+  ${M.global && M.global.rows && M.global.rows.length || M.news ? `<div class="grid g2 section">${globalCard(M.global)}${newsCard(M.news)}</div>` : ""}
   <div class="grid g2 section">
-    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${HZ_NAME[S.hz]}看多前 10 名</h2>${help("score")}<a class="more" href="#/stocks">看全部股票</a></div><div class="list">${top.map((r) => stockRow(r)).join("")}</div></section>
-    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${HZ_NAME[S.hz]}看空前 10 名</h2><a class="more" href="#/stocks?asc">看全部股票</a></div><div class="list">${bot.map((r) => stockRow(r)).join("")}</div></section>
+    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${hzFull(S.hz)}看多前 10 名</h2>${help("score")}<a class="more" href="#/stocks">看全部股票</a></div><div class="list">${top.map((r) => stockRow(r)).join("")}</div></section>
+    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${hzFull(S.hz)}看空前 10 名</h2><a class="more" href="#/stocks?asc">看全部股票</a></div><div class="list">${bot.map((r) => stockRow(r)).join("")}</div></section>
   </div>
   <div class="grid g2 section">
-    <section class="card"><div class="card-h"><h2>產業強弱</h2><span class="note">各產業個股的平均${HZ_NAME[S.hz]}分數</span></div>
+    <section class="card"><div class="card-h"><h2>產業強弱</h2><span class="note">各產業個股的平均${hzFull(S.hz)}分數</span></div>
       <div class="bars" id="indbars">${indBars(ind, 12)}</div>
       ${ind.length > 12 ? `<button class="btn" style="margin-top:12px" id="indall">顯示全部 ${ind.length} 個產業</button>` : ""}</section>
-    <section class="card"><div class="card-h"><h2>模型最近準不準</h2><a class="more" href="#/model">看成績單</a></div>
+    <section class="card"><div class="card-h"><h2>模型最近準不準</h2><a class="more" href="#/check">看實測對答案</a></div>
       ${modelSentence(mod, S.hz)}
       <div class="card-h" style="margin-top:18px"><h2>今日權證精選</h2>${help("rec")}<a class="more" href="#/warrants">看更多</a></div>
       ${picks.length ? `<div class="list" style="margin:0 -22px">${picks.map((p) => `<a class="row" href="#/warrants/${p.u}"><div class="nm"><b>${esc(p.n)}</b><span>${p.c}・標的 ${esc(p.un)}・${p.t === "C" ? "認購" : "認售"}</span></div><div class="px">${fmtPx(p.P)}</div><div class="ch"><span class="q ${p.rec >= 70 ? "hi" : "md"}">${Math.round(p.rec)}</span></div><div class="sb small muted">${esc(p.why[0] || "")}</div></a>`).join("")}</div>` : '<p class="note">權證資料準備中。</p>'}
     </section>
   </div>
-  <p class="note section" style="text-align:center"><a href="#/model" style="color:var(--brass)">模型成績單</a>　·　<a href="#/help" style="color:var(--brass)">使用說明</a></p>
+  <p class="note section" style="text-align:center"><a href="#/check" style="color:var(--brass)">實測對答案</a>　·　<a href="#/model" style="color:var(--brass)">模型成績單</a>　·　<a href="#/help" style="color:var(--brass)">使用說明</a></p>
   ${w.length ? `<section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>我的自選</h2><a class="more" href="#/watch">管理自選</a></div><div class="list">${rowsHead3("", 0)}${w.map((r) => stockRow(r, { mode: "three" })).join("")}</div></section>` : ""}
   ${disclaimer}`;
   $$("[data-hz2]").forEach((b) => b.addEventListener("click", () => setHz(+b.dataset.hz2)));
@@ -530,7 +547,8 @@ function modelSentence(m, i) {
   if (!m || m.top_hit == null) return '<p class="note">資料還在累積，至少需要幾週的歷史才能檢驗模型準確度。</p>';
   const diff = (m.top_hit - m.base_hit) * 100;
   return `<p style="margin:0">過去 ${m.eval_days} 個交易日回測：${HZ_NAME[i]}分數前 20% 的股票，${HZ_DAYS[i]}後有 <b class="num" style="font-size:18px">${(m.top_hit * 100).toFixed(0)}%</b> 上漲，全市場平均為 ${(m.base_hit * 100).toFixed(0)}%（${diff >= 0 ? "高" : "低"} ${Math.abs(diff).toFixed(1)} 個百分點）。</p>
-    ${m.spread_avg != null ? `<p class="note" style="margin:6px 0 0">分數前 20% 平均比後 20% ${m.spread_avg >= 0 ? "多賺" : "少賺"} ${Math.abs(m.spread_avg * 100).toFixed(2)}%，這個關係在 ${(m.spread_win * 100).toFixed(0)}% 的日子成立。</p>` : ""}`;
+    ${m.spread_avg != null ? `<p class="note" style="margin:6px 0 0">分數前 20% 平均比後 20% ${m.spread_avg >= 0 ? "多賺" : "少賺"} ${Math.abs(m.spread_avg * 100).toFixed(2)}%，這個關係在 ${(m.spread_win * 100).toFixed(0)}% 的日子成立。</p>` : ""}
+    ${m.rel != null ? `<p class="note" style="margin:6px 0 0">最近的可信度：<span class="pill ${relInfo(m.rel).c}" style="height:20px;font-size:12px">${relInfo(m.rel).t}</span>${help("rel")}${m.rel < 0.4 ? "　最近不太準，個股分數已自動往 50 收斂。" : ""}</p>` : ""}`;
 }
 
 // ====================================================================== 選股
@@ -539,7 +557,7 @@ async function vStocks(tok) {
   if (location.hash.includes("asc")) { stockState.sort = "s"; stockState.dir = 1; history.replaceState(null, "", "#/stocks"); }
   const L = S.latest;
   const inds = [...new Set(L.stocks.map((r) => r.ind).filter(Boolean))].sort();
-  view.innerHTML = `<h1>選股</h1><p class="lead">所有上市櫃股票與 ETF 的短、中、長期分數。點欄位名稱可以排序，點星號加入自選。</p>
+  view.innerHTML = `<h1>選股</h1><p class="lead">所有上市櫃股票與 ETF 的短期（1 週）、中期（1 個月）、長期（3 個月）分數。點欄位名稱可以排序，點星號加入自選。</p>
     <div class="filters">
       <input type="text" id="fq" placeholder="篩選名稱或代號" value="${esc(stockState.q)}" aria-label="篩選">
       <select id="fmk" aria-label="市場"><option value="">上市＋上櫃</option><option>上市</option><option>上櫃</option></select>
@@ -598,7 +616,8 @@ async function vStock(tok, code) {
   view.innerHTML = `
   <div class="sh">
     <div class="sht"><h1 style="margin-bottom:2px">${esc(d.n)} <span class="num muted" style="font-size:22px">${d.c}</span></h1>
-      <div class="muted small">${esc(d.m)}${d.ind ? "・" + esc(d.ind) : ""}・${dayFull(d.day)} 收盤</div></div>
+      <div class="muted small">${esc(d.m)}${d.ind ? "・" + esc(d.ind) : ""}・${dayFull(d.day)} 收盤
+      ${d.news && d.news.disp ? `<span class="tag alert2" title="${esc(d.news.disp)}">處置股</span>` : d.news && d.news.warn ? `<span class="tag alert1" title="${esc(d.news.warn)}">注意股</span>` : ""}</div></div>
     <div class="px" data-count="${last[4]}" data-dec="${last[4] >= 1000 ? 0 : last[4] >= 100 ? 1 : 2}">${fmtPx(last[4])}</div><div class="chg">${chgHtml(chg)}</div>
     <div class="shb">${starBtn(code).replace('class="star', 'class="btn star').replace("</button>", "<span>自選</span></button>")}
       ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣成本後的勝率">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
@@ -616,7 +635,8 @@ async function vStock(tok, code) {
   ${cur ? `<section class="card section"><div class="card-h"><h2>為什麼是 ${Math.round(cur.score)} 分？</h2><span class="note">${HZ_NAME[S.hz]}觀點，影響最大的因素</span></div>
     <div class="why"><div class="plus"><h3>加分</h3><ul>${cur.pos.length ? cur.pos.map((t) => `<li><i>＋</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯加分項</li>'}</ul></div>
     <div class="minus"><h3>扣分</h3><ul>${cur.neg.length ? cur.neg.map((t) => `<li><i>－</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯扣分項</li>'}</ul></div></div>
-    <p class="note" style="margin:14px 0 0">分數 = 個股在全市場的排名（75%）＋ 大盤氣氛（25%）。目前排在全市場第 ${Math.round(cur.pct * 100)} 百分位。${cur.n ? `機率依過去 ${fmtInt(cur.n)} 筆同分數區間的實際結果估算。` : ""}</p></section>` : ""}
+    <p class="note" style="margin:14px 0 0">分數 = 個股在全市場的排名（75%）＋ 大盤氣氛（25%）。目前排在全市場第 ${Math.round(cur.pct * 100)} 百分位。${cur.n ? `機率依過去 ${fmtInt(cur.n)} 筆同分數區間的實際結果估算。` : ""}${(S.latest.model?.[HZ[S.hz]]?.rel ?? 1) < 0.4 ? "這個期間的模型最近不太準，分數已自動往 50 收斂（可信度低）。" : ""}</p></section>` : ""}
+  ${stockNewsCard(d.news)}
   <section class="card section"><div class="card-h"><h2>股價走勢</h2><div class="seg" id="rng" style="margin-left:auto"><button data-n="60">3 個月</button><button data-n="120" class="on">6 個月</button><button data-n="250">1 年</button></div></div>
     <div class="chart" id="kchart"></div></section>
   <div class="grid g2 section">
@@ -759,7 +779,7 @@ async function vFutures(tok) {
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>商品</th><th>月份</th><th>收盤</th><th>漲跌</th><th>成交量</th><th>未平倉${help("oi")}</th></tr></thead><tbody>
     ${F.index.map((x) => `<tr><td><b>${esc(x.n)}</b></td><td>${x.month.slice(0, 4)}/${x.month.slice(4)}</td><td>${fmtPx(x.close)}</td><td>${chgHtml(x.chg)}</td><td>${fmtInt(x.vol)}</td><td>${fmtInt(x.oi)}</td></tr>`).join("")}</tbody></table></div></section>
   <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>個股期貨</h2><span class="note">依成交量排序，分數為標的股票的分數</span></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>標的</th><th>期貨價</th><th>現貨價</th><th>期現價差${help("basis")}</th><th>成交量</th><th>未平倉變化${help("oi")}</th><th>短期</th><th>中期</th><th>長期</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>標的</th><th>期貨價</th><th>現貨價</th><th>期現價差${help("basis")}</th><th>成交量</th><th>未平倉變化${help("oi")}</th>${HZ.map((_, i) => `<th>${hzTag(i)}</th>`).join("")}</tr></thead><tbody>
     ${F.stock.slice(0, 80).map((x) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${x.stock}'"><td><b>${esc(x.n)}</b> <span class="muted small">${x.stock}・${x.c}</span></td><td>${fmtPx(x.close)}</td><td>${fmtPx(x.spot)}</td>
       <td class="${cls(x.basis)}">${fmtPct(x.basis)}</td><td>${fmtInt(x.vol)}</td><td class="${cls(x.oi_chg)}">${x.oi_chg != null ? (x.oi_chg >= 0 ? "+" : "") + fmtInt(x.oi_chg) : "—"}</td>
       ${(x.s || [null, null, null]).map((s) => `<td>${pill(s)}</td>`).join("")}</tr>`).join("") || '<tr><td colspan="9">暫無資料</td></tr>'}</tbody></table></div></section>${disclaimer}`;
@@ -817,7 +837,7 @@ async function vDayTrade(tok) {
     $("#dtwarn").innerHTML = okN ? `<div class="warnbox section">今天有 <b>${okN}</b> 檔符合推薦條件（同分數區間過去扣成本後勝率超過 50% 且平均報酬為正），標示為「推薦」。其餘僅列入觀察。</div>` :
       `<div class="warnbox section">這個方向今天<b>沒有</b>符合推薦條件的標的：同分數區間的股票過去扣掉成本後平均仍是虧損${sideOk(sideStat) ? "" : "，整體回測也還沒有優勢"}。以下名單只供觀察，不建議照做。</div>`;
     $("#dtlist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>收盤</th><th>勝算${help("dtwin")}</th><th>平均報酬</th><th>停利參考${help("dttp")}</th><th>停損參考${help("dtsl")}</th><th>平均振幅</th><th>日均成交</th><th style="text-align:left">理由</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'"><td><b>${esc(r.n)}</b> ${r.ok ? `<span class="pill ${dtSide === "long" ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">推薦</span>` : ""}<br><span class="muted small">${r.c}・${esc(r.m)}</span></td>
+      ${rows.map((r) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'"><td><b>${esc(r.n)}</b> ${r.al ? '<span class="tag alert1">注意股</span> ' : ""}${r.ok ? `<span class="pill ${dtSide === "long" ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">推薦</span>` : ""}<br><span class="muted small">${r.c}・${esc(r.m)}</span></td>
         <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
         <td><span class="pill ${dtPill(r.win, dtSide)}" title="扣成本後勝率">${(r.win * 100).toFixed(0)}%</span></td><td>${sv(r.avg)}</td>
         <td>${r.tp != null ? (dtSide === "long" ? "+" : "−") + Math.abs(r.tp * 100).toFixed(1) + "%" : "—"}</td>
@@ -887,6 +907,145 @@ function calibChart(box, cal, base) {
     <text x="0" y="${H - 4}">分數低</text><text x="${pw}" y="${H - 4}" text-anchor="end">分數高</text></g>${b}${bl}</svg>`;
 }
 
+// ====================================================================== 國際市場與消息面
+function spark(vals, up) {
+  const v = (vals || []).filter((x) => x != null);
+  if (v.length < 2) return "";
+  const W = 84, H = 26, lo = Math.min(...v), hi = Math.max(...v), r = hi - lo || 1;
+  const pts = v.map((x, i) => `${(i / (v.length - 1) * W).toFixed(1)},${(H - 2 - (x - lo) / r * (H - 4)).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${up ? "var(--up)" : "var(--down)"}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+}
+function globalCard(G) {
+  if (!G || !G.rows || !G.rows.length) return "";
+  const fmtV = (r) => r.unit === "pt" ? r.v.toFixed(2) + "%" : r.v >= 1000 ? fmtInt(Math.round(r.v)) : r.v.toFixed(r.v >= 100 ? 1 : 2);
+  const ch = (r, x) => x == null ? "—" : r.unit === "pt" ? `<span class="${cls(x)}">${x > 0 ? "+" : ""}${x.toFixed(2)}</span>` : chgHtml(x, 1);
+  const NOTE = { "TWD=X": "上升＝台幣貶", "^VIX": "越高越恐慌", "^TNX": "變化單位：百分點" };
+  return `<section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${svgI("globe")} 國際市場</h2>${help("glob")}<span class="note" style="margin-left:auto">${G.at ? "更新 " + esc(G.at.slice(5)) : ""}</span></div>
+    <div class="tbl-wrap"><table class="tbl gtbl"><thead><tr><th style="text-align:left">項目</th><th>最新</th><th>1 日</th><th>1 週</th><th class="hide-s2">1 個月</th><th class="hide-s">近 3 個月</th></tr></thead><tbody>
+    ${G.rows.map((r) => `<tr><td style="text-align:left"><b>${esc(r.name)}</b>${NOTE[r.sym] ? `<br><span class="muted small">${NOTE[r.sym]}</span>` : ""}</td><td class="num">${fmtV(r)}</td><td>${ch(r, r.c1)}</td><td>${ch(r, r.c5)}</td><td class="hide-s2">${ch(r, r.c20)}</td><td class="hide-s">${spark(r.spark, (r.spark[r.spark.length - 1] ?? 0) >= (r.spark[0] ?? 0))}</td></tr>`).join("")}
+    </tbody></table></div><p class="note" style="padding:8px 22px 16px;margin:0">美股為前一個美國交易日收盤。這些數字已納入大盤分數，權重由歷史資料檢驗後自動調整。</p></section>`;
+}
+function sentTag(x) {
+  if (x > 0.05) return '<span class="stag pos">利多</span>';
+  if (x < -0.05) return '<span class="stag neg">利空</span>';
+  return '<span class="stag">中性</span>';
+}
+function ago(ts) {
+  if (!ts) return "";
+  const d = new Date(ts * 1000), now = Date.now(), m = Math.round((now - d) / 60000);
+  if (m < 60) return m + " 分鐘前";
+  if (m < 60 * 24) return Math.round(m / 60) + " 小時前";
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+function newsCard(N) {
+  if (!N) return `<section class="card"><div class="card-h"><h2>${svgI("news")} 消息面</h2></div><p class="note">新聞資料將在下次更新後出現。</p></section>`;
+  const tot = N.pos + N.neg || 1, pw = N.pos / tot * 100;
+  const mood = N.mood > 0.05 ? "偏樂觀" : N.mood < -0.05 ? "偏悲觀" : "多空互見";
+  return `<section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${svgI("news")} 消息面</h2>${help("news")}<span class="note" style="margin-left:auto">近兩天 ${N.n} 則財經新聞</span></div>
+    <div style="padding:4px 22px 10px"><div class="moodline"><span>新聞氣氛 <b>${mood}</b></span><span class="note">利多 ${N.pos} 則・利空 ${N.neg} 則</span></div>
+      <div class="moodbar"><i style="width:${pw}%"></i></div>
+      ${N.warn_n || N.disp_n ? `<p class="note" style="margin:8px 0 0">今天有 ${N.warn_n} 檔注意股、${N.disp_n} 檔處置股（處置股交易受限，已自動排除在當沖推薦之外）。</p>` : ""}</div>
+    <ul class="newslist">${(N.heads || []).slice(0, 8).map((h) => `<li>${sentTag(h.s)}<a href="${esc(h.u)}" target="_blank" rel="noopener">${esc(h.t)}</a><span class="muted small">${esc(h.src || "")}・${ago(h.at)}</span></li>`).join("")}</ul></section>`;
+}
+function stockNewsCard(N) {
+  if (!N) return "";
+  const items = N.items || [], mops = N.mops || [];
+  return `<section class="card section"><div class="card-h"><h2>${svgI("news")} 相關新聞與公告</h2>${help("news")}<span class="note">近期，依時間排列</span></div>
+    ${N.disp ? `<div class="warnbox" style="margin-bottom:10px">本股目前為<b>處置股</b>：${esc(N.disp)}。處置期間採人工管制撮合，買賣需預收款券，流動性會變差。</div>` : N.warn ? `<div class="warnbox" style="margin-bottom:10px">本股今天被列為<b>注意股</b>：${esc(N.warn)}</div>` : ""}
+    ${mops.length ? `<h3>重大訊息（公開資訊觀測站）</h3><ul class="newslist tight">${mops.map((m) => `<li>${sentTag(m.s)}<span>${esc(m.t)}</span><span class="muted small">${dayStr(m.d)}</span></li>`).join("")}</ul>` : ""}
+    ${items.length ? `<h3 style="margin-top:10px">新聞</h3><ul class="newslist tight">${items.map((h) => `<li>${sentTag(h.s)}<a href="${esc(h.u)}" target="_blank" rel="noopener">${esc(h.t)}</a><span class="muted small">${esc(h.src || "")}・${ago(h.at)}</span></li>`).join("")}</ul>` : '<p class="note">最近沒有提到這檔股票的新聞。</p>'}
+  </section>`;
+}
+
+// ====================================================================== 實測對答案
+function checkChart(box, series, h) {
+  // 上：當時的大盤分數；下：之後實際漲跌（柱）
+  const W = Math.max(280, box.clientWidth), H = 200, PL = 4, PR = 44, mid = 92;
+  const n = series.length;
+  if (n < 5) { box.innerHTML = '<p class="note">資料累積中</p>'; return; }
+  const pw = W - PL - PR, x = (i) => PL + i / (n - 1) * pw;
+  const ys = (v) => 8 + (85 - v) / 70 * (mid - 16);
+  const rets = series.map((p) => p[2]).filter((v) => v != null);
+  const rm = Math.max(0.01, ...rets.map(Math.abs));
+  const yr = (v) => mid + 18 + (H - mid - 30) / 2 - v / rm * (H - mid - 30) / 2;
+  const line = series.map((p, i) => `${x(i).toFixed(1)},${ys(Math.max(15, Math.min(85, p[1]))).toFixed(1)}`).join(" ");
+  const bw = Math.max(1, pw / n - 0.6);
+  const bars = series.map((p, i) => p[2] == null ? "" : `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${Math.min(yr(0), yr(p[2])).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.abs(yr(p[2]) - yr(0)).toFixed(1)}" fill="${p[2] >= 0 ? "var(--up)" : "var(--down)"}" opacity=".8"/>`).join("");
+  const dots = series.map((p, i) => { const ok = p[2] == null ? null : (p[1] >= 55 && p[2] > 0) || (p[1] <= 45 && p[2] < 0); const bad = p[2] != null && ((p[1] >= 55 && p[2] <= 0) || (p[1] <= 45 && p[2] >= 0)); return ok || bad ? `<circle cx="${x(i).toFixed(1)}" cy="${(H - 6).toFixed(1)}" r="2.2" fill="${ok ? "var(--brass)" : "var(--muted)"}"/>` : ""; }).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    <g class="axis grid"><line x1="${PL}" x2="${PL + pw}" y1="${ys(50)}" y2="${ys(50)}"/><text x="${W - 2}" y="${ys(50) + 4}" text-anchor="end">50 分</text>
+    <line x1="${PL}" x2="${PL + pw}" y1="${ys(55)}" y2="${ys(55)}" stroke-dasharray="2 4"/><line x1="${PL}" x2="${PL + pw}" y1="${ys(45)}" y2="${ys(45)}" stroke-dasharray="2 4"/>
+    <text x="${W - 2}" y="${ys(80) + 4}" text-anchor="end">看多</text><text x="${W - 2}" y="${ys(20) + 4}" text-anchor="end">看空</text>
+    <line x1="${PL}" x2="${PL + pw}" y1="${yr(0)}" y2="${yr(0)}"/><text x="${W - 2}" y="${yr(rm) + 10}" text-anchor="end">+${(rm * 100).toFixed(0)}%</text><text x="${W - 2}" y="${yr(-rm)}" text-anchor="end">−${(rm * 100).toFixed(0)}%</text>
+    <text x="${PL}" y="${H - 14}">${dayStr(series[0][0])}</text><text x="${PL + pw}" y="${H - 14}" text-anchor="end">${dayStr(series[n - 1][0])}</text></g>
+    ${bars}<polyline points="${line}" fill="none" stroke="var(--brass)" stroke-width="2" stroke-linejoin="round"/>${dots}
+    <rect class="hit" x="${PL}" y="0" width="${pw}" height="${H}" fill="transparent"/></svg><div class="tip hide"></div>`;
+  const svg = $("svg", box);
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), i = Math.max(0, Math.min(n - 1, Math.round((e.clientX - r.left - PL) / pw * (n - 1))));
+    const p = series[i];
+    tipAt(box, `<b>${dayFull(p[0])}</b><br>當時大盤分數 ${p[1].toFixed(0)}（${labelOf(p[1])}）<br>之後 ${h} 個交易日實際 ${p[2] == null ? "尚未揭曉" : `<span class="${cls(p[2])}">${p[2] > 0 ? "+" : ""}${(p[2] * 100).toFixed(2)}%</span>`}`, e.clientX - r.left, e.clientY - r.top);
+  });
+  svg.addEventListener("pointerleave", () => hideTip(box));
+}
+function verdictOf(edge, good, bad, pre = "") {
+  if (edge == null) return { t: "資料不足", c: "p-mid" };
+  if (edge >= good) return { t: pre + "有參考價值", c: "p-up1" };
+  if (edge <= bad) return { t: pre + "不準", c: "p-dn1" };
+  return { t: pre + "普通", c: "p-mid" };
+}
+async function vCheck(tok) {
+  const m = await api("model");
+  let dt = null;
+  try { dt = await api("daytrade"); } catch { }
+  if (tok !== routeToken) return;
+  const MC = m.market_check || {}, MR = m.market_rel || {};
+  const P = (x, d = 0) => x == null ? "—" : (x * 100).toFixed(d) + "%";
+  const R = (x, d = 2) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(d)}%</span>`;
+  const sections = HZ.map((h, i) => {
+    const c = MC[h], x = m.horizons[h], rc = x.recent, mr = MR[h] || {};
+    const mEdge = c && c.call_hit != null && c.base_up != null ? c.call_hit - Math.max(c.base_up, 1 - c.base_up) : null;
+    const sEdge = x.spread_avg;
+    const mv = verdictOf(c ? c.corr : null, 0.15, 0, "整體");
+    const sv = verdictOf(x.rel_ic, 0.03, 0, "近期");
+    return `<section class="card section"><div class="card-h"><h2>${HZ_NAME[i]}<span class="note" style="margin-left:8px">${HZ_SPAN[i]}</span></h2></div>
+    <div class="grid g2">
+      <div><div class="card-h" style="margin:0 0 6px"><h3>大盤分數 vs 之後實際漲跌</h3><span class="pill ${mv.c}" style="height:22px;font-size:12px">${mv.t}</span></div>
+        ${c && c.n ? `<p style="margin:0 0 6px">過去 ${c.n} 個交易日：分數偏多（55 分以上）的 <b>${c.bull_n}</b> 天，之後 ${H_D[i]} 大盤真的上漲 <b class="num">${P(c.bull_hit)}</b>；分數偏空（45 分以下）的 <b>${c.bear_n}</b> 天，之後真的下跌 <b class="num">${P(c.bear_hit)}</b>。</p>
+        <p class="note" style="margin:0 0 6px">對照：同期間隨便挑一天，${H_D[i]}後上漲的機率是 ${P(c.base_up)}。${mEdge != null ? (mEdge > 0 ? `判斷比「一律猜多」準 ${(mEdge * 100).toFixed(0)} 個百分點。` : `判斷還<b>沒有</b>比「一律猜${c.base_up >= 0.5 ? "多" : "空"}」準（差 ${(Math.abs(mEdge) * 100).toFixed(0)} 個百分點），代表這段期間大盤方向主要由趨勢主導。`) : ""}分數與實際漲跌的相關係數 ${c.corr ?? "—"}。</p>
+        <p class="note" style="margin:0 0 6px">目前可信度 <span class="pill ${relInfo(mr.rel).c}" style="height:20px;font-size:12px">${relInfo(mr.rel).t}</span>${mr.raw != null && Math.abs(mr.raw - mr.score) >= 1 ? `：模型原始讀數 ${Math.round(mr.raw)} 分，因可信度不足收斂為 ${Math.round(mr.score)} 分。` : ""}</p>
+        <div class="chart" id="mc${i}"></div><p class="note" style="margin:4px 0 0">金線＝當時的大盤分數；柱子＝之後 ${H_D[i]} 的實際漲跌；底部金點＝猜對、灰點＝猜錯（只計 55 分以上或 45 分以下的日子）。</p>` : '<p class="note">資料累積中</p>'}
+      </div>
+      <div><div class="card-h" style="margin:0 0 6px"><h3>個股分數 vs 之後實際漲跌</h3><span class="pill ${sv.c}" style="height:22px;font-size:12px">${sv.t}</span></div>
+        ${x.top_hit != null ? `<div class="kv"><div><span>分數前 20% 上漲比例</span><b>${P(x.top_hit, 1)}</b><span class="note">全市場 ${P(x.base_hit, 1)}</span></div>
+          <div><span>分數後 20% 下跌比例</span><b>${P(x.bot_fall, 1)}</b><span class="note">全市場 ${P(x.base_fall, 1)}</span></div>
+          <div><span>前 20% 比後 20% 平均多賺</span><b>${R(sEdge)}</b><span class="note">${x.spread_win != null ? P(x.spread_win) + " 的日子成立" : ""}</span></div>
+          <div><span>最近可信度</span><b><span class="pill ${relInfo(x.rel).c}" style="height:22px;font-size:13px">${relInfo(x.rel).t}</span></b><span class="note">近期相關係數 ${x.rel_ic ?? "—"}</span></div></div>
+          <p class="note" style="margin:8px 0 0">統計期間 ${x.eval_days} 個交易日，每天只用當時已知的資料打分。</p>` : '<p class="note">資料累積中</p>'}
+        ${rc ? `<h3 style="margin-top:16px">最近一次對答案：${dayFull(rc.from)} 的分數 → ${dayFull(rc.to)}</h3>
+          <p class="note" style="margin:2px 0 8px">日均成交 1 億元以上的股票中，當天分數最高與最低各 10 檔，到今天的實際漲跌。同期間加權指數 ${R(rc.taiex)}、全部股票平均 ${R(rc.all_avg)}。</p>
+          <div class="grid g2 rcgrid"><div><div class="rch up">分數最高 10 檔　平均 ${R(rc.top_avg)}<span class="note">　${rc.top_up}/10 檔上漲</span></div>
+            <ul class="rcl">${rc.top.map((r) => `<li><a href="#/stock/${r.c}">${esc(r.n)}</a><span class="num">${R(r.r, 1)}</span></li>`).join("")}</ul></div>
+            <div><div class="rch dn">分數最低 10 檔　平均 ${R(rc.bot_avg)}<span class="note">　${rc.bot_dn}/10 檔下跌</span></div>
+            <ul class="rcl">${rc.bot.map((r) => `<li><a href="#/stock/${r.c}">${esc(r.n)}</a><span class="num">${R(r.r, 1)}</span></li>`).join("")}</ul></div></div>
+          <p class="note" style="margin:6px 0 0">${rc.top_avg > rc.bot_avg ? `這一次：高分組比低分組多賺 ${((rc.top_avg - rc.bot_avg) * 100).toFixed(1)} 個百分點，方向判斷正確。` : `這一次：高分組反而比低分組少賺 ${((rc.bot_avg - rc.top_avg) * 100).toFixed(1)} 個百分點，方向判斷錯誤。`}單次結果運氣成分大，請以上方的長期統計為準。</p>` : ""}
+      </div>
+    </div></section>`;
+  }).join("");
+  const DM = dt && dt.model;
+  view.innerHTML = `<h1 class="grad">實測對答案</h1>
+  <p class="lead">把模型每一天「當時算出來的分數」拿去和之後真正的漲跌比對，全部只用當時已知的資料（不偷看未來）。每天收盤更新後自動重算。資料期間 ${dayFull(m.first_day)}～${dayFull(m.last_day)}。</p>
+  <section class="card glow"><span class="glow-ring"></span><div class="card-h"><h2>一句話結論</h2></div>
+    <ul class="facts">${HZ.map((h, i) => { const x = m.horizons[h], c = MC[h] || {}; const s1 = x.spread_avg == null ? "資料累積中" : x.spread_avg > 0.002 && (x.spread_win ?? 0) > 0.53 ? `個股排名有參考價值（高分組平均比低分組多賺 ${(x.spread_avg * 100).toFixed(1)}%）` : "個股排名的優勢不明顯"; const s2 = c.corr == null ? "" : c.corr >= 0.15 ? "，大盤方向判斷有參考價值" : "，大盤方向判斷目前沒有比「跟著趨勢猜」更準"; return `<li><span><b>${hzFull(i)}</b>：${s1}${s2}${x.rel != null && x.rel < 0.4 ? "；最近幾個月表現轉差，分數已自動降低強度" : ""}。</span></li>`; }).join("")}
+    ${DM && DM.long ? `<li><span><b>當沖</b>：做多推薦組扣成本後勝率 ${P(DM.long.win, 1)}、做空推薦組 ${P(DM.short && DM.short.win, 1)}（最近 ${DM.eval_days} 個交易日）。<a href="#/daytrade" style="color:var(--brass)">看當沖</a></span></li>` : ""}</ul>
+    <p class="note" style="margin:10px 0 0">股市短期走勢本來就很難預測，專業量化模型的相關係數通常也只有 0.02～0.08。這頁的目的是讓你知道「哪些分數現在比較可信」，可信度低時請保守看待。</p></section>
+  ${sections}
+  <p class="disclaimer">回測結果代表過去，不保證未來。上漲／下跌比例用重疊的期間計算（例如每天都算之後 20 天），實際獨立樣本比天數少，數字會有誤差。</p>`;
+  const draw = () => HZ.forEach((h, i) => { const c = MC[h]; const box = $("#mc" + i); if (c && box) checkChart(box, c.series || [], [5, 20, 60][i]); });
+  draw(); onResize(() => location.hash === "#/check" && draw());
+}
+const H_D = ["5 個交易日", "20 個交易日", "60 個交易日"];
+
 // ====================================================================== 說明
 async function vHelp(tok) {
   let st = S.status || {};
@@ -898,7 +1057,8 @@ async function vHelp(tok) {
     <section class="card"><h2>分數怎麼看</h2>
       <p>每檔股票有短期（約 1 週）、中期（約 1 個月）、長期（約 3 個月）三個分數，0～100 分，50 分是中立。</p>
       <div class="bars" style="margin:10px 0">${[[85, "75 分以上：強烈看多"], [65, "60～75：偏多"], [50, "40～60：中立"], [33, "25～40：偏空"], [15, "25 分以下：強烈看空"]].map(([s, t]) => `<div class="b"><span>${pill(s)}</span><span>${t}</span><span></span></div>`).join("")}</div>
-      <p>分數由約 30 個指標組成：漲勢與均線（技術面）、外資投信買賣與融資（籌碼面）、營收與本益比（基本面），再加上大盤氣氛。</p>
+      <p>分數由約 35 個指標組成：漲勢與均線（技術面）、外資投信買賣與融資（籌碼面）、營收與本益比（基本面）、新聞與重大訊息的利多利空（消息面），再加上大盤氣氛。大盤氣氛除了台股本身，也看美股（費城半導體、那斯達克、標普 500）、台積電 ADR、恐慌指數 VIX、美債殖利率、美元與新台幣匯率。</p>
+      <p>每個分數都有「可信度」：模型每天事後對答案，最近若不準，分數會自動往 50 收斂。到「實測對答案」可以看分數和實際漲跌比對的結果。</p>
       <p>關鍵在於<b>權重不是固定的</b>：每天收盤後，模型會檢查每個指標過去預測得準不準，準的加重、失靈的減輕，所以判斷會隨行情自動修正。「模型成績單」可以看到它最近的表現。</p>
     </section>
     ${st.static ? `<section class="card"><h2>雲端版（不用開電腦）</h2>
