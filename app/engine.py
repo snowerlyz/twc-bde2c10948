@@ -28,7 +28,7 @@ HALF_LIFE = json.loads(os.environ["TWC_HL"]) if os.environ.get("TWC_HL") else {"
 CAL_WIN = {"short": 60, "mid": 80, "long": 100}
 SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
-ENGINE_VERSION = 7
+ENGINE_VERSION = 8
 
 
 def isnan(x):
@@ -82,6 +82,10 @@ FACTORS = [
     ("size", "公司市值大小", "公司體質", (0.000, 0.000, 0.000)),
     ("ind_mom20", "所屬類股近一個月漲跌", "類股強弱", (0.005, 0.010, 0.010)),
     ("ind_mom5", "所屬類股近一週漲跌", "類股強弱", (0.005, 0.000, 0.000)),
+    ("qfii_lvl", "外資持股比率", "大戶動向", (0.000, 0.003, 0.005)),
+    ("qfii_chg20", "外資持股比率近一個月變化", "大戶動向", (0.005, 0.010, 0.005)),
+    ("big_chg", "千張大戶持股比例變化（集保）", "大戶動向", (0.005, 0.010, 0.010)),
+    ("retail_chg", "散戶人數變化（集保）", "大戶動向", (-0.005, -0.010, -0.010)),
 ]
 FKEYS = [f[0] for f in FACTORS]
 FNAME = {f[0]: f[1] for f in FACTORS}
@@ -206,7 +210,7 @@ def load_data(max_days=320):
     D.days, D.T = days, T
     names, market = {}, {}
     raw = {}   # code -> dict of lists
-    keys = ["o", "h", "l", "c", "v", "val", "ref", "fi", "it", "dl", "mb", "sb"]
+    keys = ["o", "h", "l", "c", "v", "val", "ref", "fi", "it", "dl", "mb", "sb", "qf"]
     D.mkt = {k: [NAN] * T for k in ("taiex", "up", "down", "mtot")}
     D.fund_days = {}
     D.shares = {}
@@ -292,7 +296,39 @@ def load_data(max_days=320):
         D.pc.update(read_json(month_path("pc", ym), {}) or {})
     load_news(D)
     load_global(D)
+    load_holders(D)
     return D
+
+
+def load_holders(D):
+    """外資持股比率（每日）與集保股權分散（每週）。"""
+    qdir = os.path.join(DB, "parts", "qfii")
+    latest_sh = {}
+    for t, d in enumerate(D.days):
+        j = read_json(os.path.join(qdir, d + ".json.gz")) if os.path.isdir(qdir) else None
+        if not j:
+            continue
+        for code, (pct, sh) in (j.get("q") or {}).items():
+            s = D.raw.get(code)
+            if s is not None and pct is not None:
+                s["qf"][t] = pct
+            if sh:
+                latest_sh[code] = sh
+    for code, sh in latest_sh.items():
+        D.shares.setdefault(code, sh)
+    tdir = os.path.join(DB, "parts", "tdcc")
+    snaps = []
+    if os.path.isdir(tdir):
+        for f in sorted(os.listdir(tdir)):
+            if f.endswith(".json.gz"):
+                j = read_json(os.path.join(tdir, f)) or {}
+                if j.get("d"):
+                    snaps.append((j["day"], j["d"]))
+    D.tdcc = snaps
+    # 第 t 天可用的最新一份（資料日期早於當天，週五的資料週末才公布）
+    import bisect
+    sd = [x[0] for x in snaps]
+    D.tdcc_idx = [bisect.bisect_left(sd, d) - 1 for d in D.days]
 
 
 # ====================================================================== 消息面與國際市場
@@ -461,6 +497,7 @@ def adjust_series(s):
 
 
 _SHARES = {}
+_HOLD = {"snaps": [], "idx": []}
 
 
 def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
@@ -609,6 +646,32 @@ def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
     sh = _SHARES.get(code)
     F["turn20"] = [(v20[t] / sh) if sh and not isnan(v20[t]) else NAN for t in range(T)]
     F["size"] = [math.log(s["c"][t] * sh) if sh and not isnan(s["c"][t]) and s["c"][t] > 0 else NAN for t in range(T)]
+    # 外資持股比率
+    qf = s["qf"]
+    F["qfii_lvl"] = list(qf)
+    F["qfii_chg20"] = [NAN] * T
+    for t in range(T):
+        if isnan(qf[t]):
+            continue
+        for back in (20, 19, 21, 18, 22):
+            if t - back >= 0 and not isnan(qf[t - back]):
+                F["qfii_chg20"][t] = qf[t] - qf[t - back]
+                break
+    # 集保：千張大戶持股比例、散戶人數，和約 4 週前比較
+    F["big_chg"] = [NAN] * T
+    F["retail_chg"] = [NAN] * T
+    snaps, sidx = _HOLD["snaps"], _HOLD["idx"]
+    if len(snaps) >= 2:
+        for t in range(T):
+            j = sidx[t] if t < len(sidx) else -1
+            if j < 1:
+                continue
+            k = max(0, j - 4)
+            a, b = snaps[j][1].get(code), snaps[k][1].get(code)
+            if a and b:
+                F["big_chg"][t] = a[0] - b[0]
+                if b[3]:
+                    F["retail_chg"][t] = a[3] / b[3] - 1
     F["ind_mom20"] = [NAN] * T      # 類股因子在 run_engine 裡算（需要同類股的其他股票）
     F["ind_mom5"] = [NAN] * T
     # 消息面：只有在有抓消息的日子才有值（沒有消息＝0，代表「沒有新聞」而非缺資料）
@@ -1127,6 +1190,14 @@ def reason_text(k, v, sign):
         return "週轉率每天約 %.1f%%（%s）" % (v * 100, "交易熱絡" if v >= 0.02 else "交易清淡" if v < 0.002 else "普通")
     if k == "size":
         return "市值約 %s 億元（%s）" % (format(int(math.exp(v) / 1e8), ","), "大型股" if v >= math.log(1e11) else "小型股" if v < math.log(1e10) else "中型股")
+    if k == "qfii_lvl":
+        return "外資持股比率 %.1f%%" % v
+    if k == "qfii_chg20":
+        return "外資持股比率近一個月%s %.2f 個百分點" % ("增加" if v >= 0 else "減少", abs(v)) if abs(v) >= 0.05 else None
+    if k == "big_chg":
+        return "千張大戶持股比例近一個月%s %.2f 個百分點" % ("增加" if v >= 0 else "減少", abs(v)) if abs(v) >= 0.05 else None
+    if k == "retail_chg":
+        return "散戶人數近一個月%s %.1f%%" % ("增加" if v >= 0 else "減少", abs(v) * 100) if abs(v) >= 0.005 else None
     if k == "ind_mom20":
         return "所屬類股近一個月%s %.1f%%" % ("上漲" if v >= 0 else "下跌", abs(v) * 100)
     if k == "ind_mom5":
@@ -1165,6 +1236,7 @@ def run_engine(prog=None):
     FA = {k: [None] * N for k in FKEYS}      # 每個因子：每檔股票一個 array('f')
     _SHARES.clear()
     _SHARES.update(D.shares)
+    _HOLD["snaps"], _HOLD["idx"] = D.tdcc, D.tdcc_idx
     A_all, traded_all, val20_all, ret_all = [None] * N, [None] * N, [None] * N, [None] * N
     ma_all = [None] * N
     stock_close, stock_fi = {}, {}

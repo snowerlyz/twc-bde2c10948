@@ -280,3 +280,97 @@ def collect_global():
         write_json(GLOBAL_PATH, out)
     log("國際市場：取得 %d/%d 項" % (ok, len(GLOBAL_SYMBOLS)))
     return out
+
+
+# ---------------------------------------------------------------- 外資持股比率、集保股權分散
+QFII_DIR = os.path.join(DB, "parts", "qfii")
+TDCC_DIR = os.path.join(DB, "parts", "tdcc")
+
+
+def _n(x):
+    try:
+        return float(str(x).replace(",", "").replace("%", "").strip())
+    except Exception:
+        return None
+
+
+def fetch_qfii_day(day):
+    """某一天上市＋上櫃每檔股票的外資持股比率與發行股數。抓不到（還沒公布）回傳 None。"""
+    out = {}
+    j = fetch_json("https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?date=%s&selectType=ALLBUT0999&response=json" % day)
+    if j.get("stat") != "OK":
+        return None
+    for r in j.get("data") or []:
+        code = str(r[0]).strip()
+        if not re.fullmatch(r"\d{4}", code):
+            continue
+        out[code] = [_n(r[7]), _n(r[3])]
+    roc = "%d/%s/%s" % (int(day[:4]) - 1911, day[4:6], day[6:8])
+    try:
+        j = fetch_json("https://www.tpex.org.tw/web/stock/3insti/qfii/qfii_result.php?l=zh-tw&o=json&d=%s" % roc)
+        tb = (j.get("tables") or [{}])[0]
+        if (tb.get("date") or "").replace("/", "") == "%d%s%s" % (int(day[:4]) - 1911, day[4:6], day[6:8]):
+            for r in tb.get("data") or []:
+                code = str(r[1]).strip()
+                if re.fullmatch(r"\d{4}", code):
+                    out[code] = [_n(r[7]), _n(r[3])]
+    except Exception as e:
+        log("上櫃外資持股 %s：%s" % (day, e))
+    return out
+
+
+def collect_qfii(days, max_new=130, prog=None):
+    """補齊最近的外資持股比率（days 由新到舊）。"""
+    n = 0
+    for d in days:
+        path = os.path.join(QFII_DIR, d + ".json.gz")
+        if os.path.exists(path):
+            continue
+        if n >= max_new:
+            break
+        try:
+            obj = fetch_qfii_day(d)
+        except Exception as e:
+            log("外資持股 %s：%s" % (d, e))
+            continue
+        if obj:
+            write_json(path, {"day": d, "q": obj}, gz=True)
+            n += 1
+            if prog and n % 10 == 0:
+                prog.set(msg="下載外資持股比率（已補 %d 天）" % n)
+    if n:
+        log("外資持股比率：新增 %d 天" % n)
+    return n
+
+
+def collect_tdcc():
+    """集保股權分散表（每週一份，只能抓到最新一週，所以每週存下來慢慢累積）。"""
+    x = fetch("https://opendata.tdcc.com.tw/getOD.ashx?id=1-5", timeout=120)
+    rows = x.lstrip("﻿").splitlines()
+    data, day = {}, None
+    for line in rows[1:]:
+        p = line.split(",")
+        if len(p) < 6 or not re.fullmatch(r"\d{4}", p[1].strip()):
+            continue
+        day = p[0].strip()
+        code, lv = p[1].strip(), int(p[2])
+        d = data.setdefault(code, {})
+        d[lv] = (int(float(p[3])), float(p[5]))
+    if not day:
+        return None
+    path = os.path.join(TDCC_DIR, day + ".json.gz")
+    if os.path.exists(path):
+        return day
+    out = {}
+    for code, d in data.items():
+        tot = d.get(17, (0, 0))[0]
+        if not tot:
+            continue
+        big1000 = d.get(15, (0, 0))[1]
+        big400 = sum(d.get(k, (0, 0))[1] for k in (12, 13, 14, 15))
+        retail_n = sum(d.get(k, (0, 0))[0] for k in range(1, 9))     # 50 張以下的人數
+        retail_p = sum(d.get(k, (0, 0))[1] for k in range(1, 9))
+        out[code] = [round(big1000, 2), round(big400, 2), tot, retail_n, round(retail_p, 2)]
+    write_json(path, {"day": day, "d": out}, gz=True)
+    log("集保股權分散表：%s，%d 檔" % (day, len(out)))
+    return day
