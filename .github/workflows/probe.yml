@@ -16,6 +16,6 @@ jobs:
           git config user.name "twc-bot"; git config user.email "twc-bot@users.noreply.github.com"
           git checkout --orphan probe
           git rm -rf --cached . >/dev/null
-          git add -f probe_result.json
+          git add -f probe_result.json probe_files
           git commit -m "probe" -q
           git push -f origin probe
