@@ -943,17 +943,36 @@ def market_model(D, stock_close, stock_fi):
                 up_s = (sum(1 for _, r in near if r > 0) + 2.5) / (len(near) + 5)
                 sc = 0.6 * sc + 0.4 * up_s * 100
             score_s[t] = sc
-        # 可信度：最近（結果已揭曉的）分數與之後實際漲跌的相關性
-        kn = [(score_s[t], fr[t]) for t in range(max(40, last - h - 150), last - h + 1)
-              if 0 <= t < T and not isnan(score_s[t]) and not isnan(fr[t])]
-        mc = pearson([a for a, _ in kn], [b for _, b in kn]) if len(kn) >= 30 else None
-        rel_m = 0.5 if mc is None else max(0.25, min(1.0, mc / 0.2))
+        # 最終分數＝依「模型最近準不準」混合「模型讀數」與「歷史上漲比例」。
+        # 模型最近準就多聽模型；最近不準就以過去一年實際上漲的比例為主（大盤長期向上時就會偏多）。
+        def rel_at(t):
+            kn = [(score_s[u], fr[u]) for u in range(max(40, t - h - 150), t - h + 1)
+                  if 0 <= u < T and not isnan(score_s[u]) and not isnan(fr[u])]
+            c = pearson([a for a, _ in kn], [b for _, b in kn]) if len(kn) >= 30 else None
+            return c, (0.5 if c is None else max(0.0, min(1.0, c / 0.2)))
+
+        def base_at(t):
+            ups = [fr[u] for u in range(max(0, t - h - 250), t - h + 1) if 0 <= u < T and not isnan(fr[u])]
+            if len(ups) < 40:
+                return None, 50.0
+            p = sum(1 for r in ups if r > 0) / len(ups)
+            return p, 50 + (p - 0.5) * 100 * 0.4
+
+        fin_s = [NAN] * T
+        for t in range(T):
+            if isnan(score_s[t]):
+                continue
+            _, rl = rel_at(t)
+            _, B = base_at(t)
+            fin_s[t] = rl * score_s[t] + (1 - rl) * B
+        mc, rel_m = rel_at(last)
+        base_p, base_score = base_at(last)
         cl = comp[last] if not isnan(comp[last]) else 0.0
         past = [c for c in comp[:last] if not isnan(c)]
         pct = (sum(1 for c in past if c < cl) + 0.5 * sum(1 for c in past if c == cl)) / len(past) if len(past) >= 20 \
             else 0.5 + 0.5 * math.tanh(cl)
         raw_score = score_s[last] if not isnan(score_s[last]) else 50 + (pct - 0.5) * 70
-        score = 50 + (raw_score - 50) * rel_m
+        score = rel_m * raw_score + (1 - rel_m) * base_score
         sims = [(comp[t], fr[t]) for t in range(T - h) if not isnan(comp[t]) and not isnan(fr[t])]
         near = sorted(sims, key=lambda p: abs(p[0] - cl))[:max(15, len(sims) // 4)]
         up = sum(1 for _, r in near if r > 0)
@@ -963,6 +982,7 @@ def market_model(D, stock_close, stock_fi):
             "label": label_of(score),
             "pct": round(pct, 3), "raw": round(raw_score, 1), "rel": round(rel_m, 3),
             "rel_corr": None if mc is None else round(mc, 3),
+            "base_up": None if base_p is None else round(base_p, 3), "base_score": round(base_score, 1),
             "similar_n": len(near), "similar_up": up,
             "similar_avg": round(sum(r for _, r in near) / len(near) * 100, 2) if near else None,
             "pos": [mkt_reason(k, raw[k][last]) for c_, k in contrib[:3] if c_ > 0.05],
@@ -970,7 +990,8 @@ def market_model(D, stock_close, stock_fi):
             "weights": {k: round(w, 4) for k, w in weights.items()},
         }
         # ---- 實測：每天當時算出的大盤分數 vs 之後真正的漲跌（前 40 天暖機不計）
-        ev = [(t, score_s[t], fr[t]) for t in range(40, T) if not isnan(score_s[t]) and not isnan(fr[t])]
+        ev = [(t, fin_s[t], fr[t]) for t in range(40, T) if not isnan(fin_s[t]) and not isnan(fr[t])]
+        evr = [(score_s[t], fr[t]) for t in range(40, T) if not isnan(score_s[t]) and not isnan(fr[t])]
         bull = [r for _, sc, r in ev if sc >= 55]
         bear = [r for _, sc, r in ev if sc <= 45]
         neut = [r for _, sc, r in ev if 45 < sc < 55]
@@ -985,8 +1006,9 @@ def market_model(D, stock_close, stock_fi):
             "call_hit": round(hit / (len(bull) + len(bear)), 3) if bull or bear else None,
             "base_up": round(sum(1 for _, _, r in ev if r > 0) / len(ev), 3) if ev else None,
             "corr": round(pearson([sc for _, sc, _ in ev], [r for _, _, r in ev]) or 0, 3) if len(ev) >= 30 else None,
-            "series": [[D.days[t], round(score_s[t], 1), None if isnan(fr[t]) else round(fr[t], 4)]
-                       for t in range(max(40, T - 160), T) if not isnan(score_s[t])],
+            "model_corr": round(pearson([a for a, _ in evr], [b for _, b in evr]) or 0, 3) if len(evr) >= 30 else None,
+            "series": [[D.days[t], round(fin_s[t], 1), None if isnan(fr[t]) else round(fr[t], 4)]
+                       for t in range(max(40, T - 160), T) if not isnan(fin_s[t])],
         }
     out["raw"] = {k: (None if isnan(raw[k][last]) else raw[k][last]) for k in raw}
     n = min(T, 120)
@@ -1407,6 +1429,34 @@ def run_engine(prog=None):
                 if c is not None:
                     comp_ic[hn].append((t, c))
     last_w = {hn: weights_hist[hn][-1] for hn in HN}
+    # ---- 機器學習輔助（有安裝 numpy、lightgbm 時才用）：和加權分數各占一半
+    ml_report = None
+    if os.environ.get("TWC_NO_ML") != "1":
+        try:
+            import mlmodel
+            if mlmodel.available():
+                say("機器學習模型（逐段重新訓練）")
+                ml_report = mlmodel.blend(store, fstore, pct_hist, H, FKEYS)
+                for hn in HN:
+                    comp_ic[hn] = []
+                    for t in sorted(store):
+                        pct = pct_hist[hn].get(t)
+                        fa = fstore.get((t, hn))
+                        if not pct or fa is None:
+                            continue
+                        alive = store[t][0]
+                        xs, ys = [], []
+                        for j, i in enumerate(alive):
+                            y = fa[j]
+                            if y == y and i in pct:
+                                xs.append(pct[i])
+                                ys.append(y)
+                        c = pearson(xs, ys)
+                        if c is not None:
+                            comp_ic[hn].append((t, c))
+        except Exception as e:
+            log("機器學習模型失敗，改用加權分數：%s" % e)
+            ml_report = {"error": str(e)}
     del store, fstore
 
     say("整理結果")
@@ -1415,6 +1465,7 @@ def run_engine(prog=None):
                             pct_hist, ic_hist, comp_ic, weights_hist, mkt)
     results["FA"] = FA
     results["pct_hist"] = pct_hist
+    results["model"]["ml"] = ml_report
     say("完成，耗時 %.0f 秒" % (time.time() - t0))
     return results, D, A_all
 

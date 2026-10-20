@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: 安裝機器學習套件
+        run: pip install -q numpy lightgbm
       - name: 抓取官方資料並分析
         env:
           TWC_DATA: ${{ github.workspace }}/data

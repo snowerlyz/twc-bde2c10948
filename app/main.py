@@ -198,7 +198,7 @@ def analyze(prog=None):
     if dt:
         write_json(os.path.join(RESULTS, "daytrade.json"), dt)
     res["model"]["market_check"] = mkt.get("check")
-    res["model"]["market_rel"] = {hn: {k: mkt["horizons"][hn].get(k) for k in ("raw", "rel", "rel_corr", "score")} for hn in HN}
+    res["model"]["market_rel"] = {hn: {k: mkt["horizons"][hn].get(k) for k in ("raw", "rel", "rel_corr", "score", "base_up")} for hn in HN}
     write_json(os.path.join(RESULTS, "model.json"), res["model"])
     tun = read_json(os.path.join(DB, "tuning.json"), {}) or {}
     write_json(os.path.join(RESULTS, "tuning.json"), tun)

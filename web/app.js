@@ -69,7 +69,7 @@ function sbar(s) {
 // 名詞解釋
 const GLOSS = {
   score: "分數 0～100，50 分代表看不出方向；越高越可能漲，越低越可能跌。75 分以上＝強烈看多，25 分以下＝強烈看空。分數綜合約 35 項指標：股價走勢、法人買賣、公司營收獲利、新聞消息，再加上大盤與美股等國際行情。短期看 1 週、中期看 1 個月、長期看 3 個月。",
-  rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，分數也會自動往 50 靠攏，不給太肯定的判斷。等它重新變準，可信度會自己回升。",
+  rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，個股分數會自動往 50 靠攏；大盤分數則改以「過去一年大盤實際上漲的比例」為主。等它重新變準，可信度會自己回升。",
   tune: "模型每天收盤後會自我檢討：試好幾種做法（例如各項指標的比重要不要、要多快跟著最近表現調整），用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種。",
   link: "連動：用過去約 200 個交易日統計，國外市場前一晚的漲跌，和這個類股隔天漲跌的關係。「連動高」代表常常同方向一起動；數字是平均關係，個別日子可能完全不同。",
   news: "收集鉅亨網、Yahoo 股市的財經新聞，和公司在公開資訊觀測站發布的重大訊息，依標題用字判斷偏好消息（利多）還是壞消息（利空）。這是用關鍵字粗略判斷，可能看錯，重要消息請點開原文確認。",
@@ -1078,7 +1078,7 @@ async function vCheck(tok) {
       <div><div class="card-h" style="margin:0 0 6px"><h3>看大盤準不準</h3><span class="pill ${mv.c} sm">${mv.t}</span></div>
         ${c && c.n ? `<p style="margin:0 0 6px">過去 ${c.n} 個交易日裡，模型說「偏多」（55 分以上）的有 <b>${c.bull_n}</b> 天，${d}後大盤真的漲的占 <b class="num">${P(c.bull_hit)}</b>；說「偏空」（45 分以下）的有 <b>${c.bear_n}</b> 天，${d}後真的跌的占 <b class="num">${P(c.bear_hit)}</b>。</p>
         <p class="note" style="margin:0 0 6px">對照：這段期間隨便挑一天，${d}後大盤上漲的機率是 ${P(c.base_up)}。${base != null ? (c.call_hit > base ? `模型比「一律猜${c.base_up >= 0.5 ? "漲" : "跌"}」準一些。` : `所以模型看大盤，還沒有比「一律猜${c.base_up >= 0.5 ? "漲" : "跌"}」準；這段期間大盤主要是順著趨勢走。`) : ""}</p>
-        ${mr.raw != null && Math.abs(mr.raw - mr.score) >= 1 ? `<p class="note" style="margin:0 0 6px">今天：模型原本算出 ${Math.round(mr.raw)} 分，但最近不太準，所以調成 ${Math.round(mr.score)} 分。</p>` : ""}
+        ${mr.raw != null && Math.abs(mr.raw - mr.score) >= 1 ? `<p class="note" style="margin:0 0 6px">今天：模型原本算出 ${Math.round(mr.raw)} 分；${mr.rel != null && mr.rel < 0.5 ? "但最近不太準，所以" : ""}再參考過去一年大盤${d}後實際上漲的比例（${mr.base_up != null ? P(mr.base_up) : "—"}），最後是 ${Math.round(mr.score)} 分。</p>` : ""}
         <div class="chart" id="mc${i}"></div><p class="note" style="margin:4px 0 0">金線＝當時的大盤分數；紅綠柱＝之後 ${d}大盤實際漲跌；底部金點＝猜對、灰點＝猜錯（只算 55 分以上或 45 分以下的日子）。</p>` : '<p class="note">資料累積中</p>'}
       </div>
     </div></section>`;
@@ -1124,6 +1124,7 @@ async function vCheck(tok) {
   <section class="card section"><div class="card-h"><h2>模型每天自我調整</h2>${help("tune")}<span class="note">${tu && tu.eval_day ? "最近一次：" + dayFull(tu.eval_day) : ""}</span></div>
     <p style="margin:0 0 6px">每天收盤後，模型會試好幾種計分做法——主要差在「各項指標的比重，要不要、要多快跟著最近的表現改」——用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種（打 ✓ 的）。新做法要明顯比較好才會換，避免天天換來換去。</p>
     <p class="note" style="margin:0 0 12px">「整體」看過去一年，「最近」看最近幾個月；金色長條越長越準，灰色代表反而猜反了。</p>
+    ${m.ml && m.ml.short && m.ml.short.n ? `<div class="warnbox" style="margin-bottom:12px"><b>機器學習輔助：使用中。</b>另外訓練一個機器學習模型（每 15 個交易日用過去的資料重新學一次），和上面選出的計分做法各占一半。實測（只用當時已知資料）：${HZ.map((h, i) => { const x = m.ml[h]; return x && x.n ? `${HZ_NAME[i]}準確度 ${x.ic_lin.toFixed(3)} → <b>${x.ic_mix.toFixed(3)}</b>（${Math.round(x.better * 100)}% 的日子變準）` : ""; }).filter(Boolean).join("；")}。</div>` : ""}
     <div class="grid g2">${tuneTable(EV.main && EV.main.short, "短期（1 週）")}${tuneTable(EV.main && EV.main.mid, "中期（1 個月）")}${tuneTable(EV.main && EV.main.long, "長期（3 個月）")}${tuneTable(EV.dt, "當沖")}</div>
     <h3 style="margin-top:16px">調整紀錄</h3>
     ${logs.length ? `<ul class="rcl">${logs.map((l) => `<li><span>${dayFull(l.day)}　${PART_NAME[l.hn] || ""}：${l.from ? `由「${esc(l.from)}」改為` : "開始採用"}「${esc(l.to)}」</span></li>`).join("")}</ul>` : '<p class="note">還沒有調整過。</p>'}
