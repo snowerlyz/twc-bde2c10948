@@ -51,6 +51,12 @@ jobs:
         env:
           TWC_DATA: ${{ github.workspace }}/data
         run: python app/build_site.py _site
+      - name: 檢查網站內容是否完整
+        run: |
+          for f in latest model daytrade tuning sectors global report; do
+            test -s _site/api/$f || { echo "缺少 $f"; exit 1; }
+          done
+          python -c "import json;r=json.load(open('_site/api/report'));print(r['title'])"
       - name: 每月一次維持排程有效（GitHub 會停用 60 天沒動靜的公開專案排程）
         if: ${{ github.event_name == 'schedule' }}
         run: |
