@@ -10,7 +10,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python tools/probe.py 20261019 20261020
+      - run: python tools/probe.py 20261020
       - name: 存結果到 probe 分支
         run: |
           git config user.name "twc-bot"; git config user.email "twc-bot@users.noreply.github.com"
