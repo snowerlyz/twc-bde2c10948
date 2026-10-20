@@ -179,6 +179,8 @@ def analyze(prog=None):
     res["model"]["market_check"] = mkt.get("check")
     res["model"]["market_rel"] = {hn: {k: mkt["horizons"][hn].get(k) for k in ("raw", "rel", "rel_corr", "score")} for hn in HN}
     write_json(os.path.join(RESULTS, "model.json"), res["model"])
+    tun = read_json(os.path.join(DB, "tuning.json"), {}) or {}
+    write_json(os.path.join(RESULTS, "tuning.json"), tun)
     snapinfo = read_json(os.path.join(DB, "snapshot", "info.json"), {}) or {}
     latest = {
         "day": D.days[-1], "days": D.T, "first_day": D.days[0],

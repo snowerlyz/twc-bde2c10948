@@ -26,7 +26,7 @@ HN = ["short", "mid", "long"]
 H_LABEL = {"short": "短期（約 1 週，5 個交易日）", "mid": "中期（約 1 個月，20 個交易日）", "long": "長期（約 3 個月，60 個交易日）"}
 HALF_LIFE = json.loads(os.environ["TWC_HL"]) if os.environ.get("TWC_HL") else {"short": 120, "mid": 150, "long": 90}
 CAL_WIN = {"short": 60, "mid": 80, "long": 100}
-SHRINK_K = float(os.environ.get("TWC_SK", "30"))
+SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
 ENGINE_VERSION = 6
 
@@ -1099,17 +1099,17 @@ def run_engine(prog=None):
     say("大盤模型")
     mkt = market_model(D, stock_close, stock_fi)
 
-    # ---- 逐日（由舊到新）：排名 → IC → 權重 → 綜合分數
-    say("用歷史走勢檢驗因子並調整權重", 0, T)
+    # ---- 第一輪（由舊到新）：每天的因子排名 → 對照之後實際報酬算 IC
+    say("用歷史走勢檢驗因子", 0, T)
     ic_hist = {hn: {k: [] for k in FKEYS} for hn in HN}   # (t, ic)
     comp_ic = {hn: [] for hn in HN}
-    pct_hist = {hn: {} for hn in HN}                        # t -> list(pct) (只存需要的日子)
+    pct_hist = {hn: {} for hn in HN}                        # t -> {i: pct}（只存需要的日子）
     weights_hist = {hn: [] for hn in HN}
-    keep_from = max(0, T - 160)
+    keep_from = max(0, T - 200)
+    store = {}      # t -> (alive, {k: array 排名，缺值為 0})
+    fstore = {}     # (t, hn) -> array 未來報酬排名（缺值為 NaN）
     last_R = None
-    last_w = None
     for t in range(T):
-        # 有效股票（當天有價）
         alive = [i for i in range(N) if not isnan(A_all[i][t]) and traded_all[i][t]]
         liquid = set(i for i in alive if not isnan(val20_all[i][t]) and val20_all[i][t] >= MIN_VALUE)
         R = {}
@@ -1121,7 +1121,6 @@ def run_engine(prog=None):
                 if v == v:
                     vals.append((v, i))
             R[k] = rank_unit(vals) if len(vals) >= 50 else {}
-        # 未來報酬
         fwd = {}
         for hn in HN:
             h = H[hn]
@@ -1132,9 +1131,8 @@ def run_engine(prog=None):
                     if a1 == a1 and a0 > 0:
                         fr.append((a1 / a0 - 1, i))
                 if len(fr) >= 50:
-                    fwd[hn] = (dict((i, r) for r, i in fr), rank_unit(list(fr)))
-        # IC（這一天的因子 vs 之後實際報酬）
-        for hn, (fr, frr) in fwd.items():
+                    fwd[hn] = rank_unit(list(fr))
+        for hn, frr in fwd.items():
             for k in FKEYS:
                 rk = R[k]
                 if not rk:
@@ -1148,41 +1146,44 @@ def run_engine(prog=None):
                 c = pearson(xs, ys) if len(xs) >= 100 else None
                 if c is not None:
                     ic_hist[hn][k].append((t, c))
-        # 今天可用的權重：只用「結果已經揭曉」的 IC（t' + h <= t）
-        W = {}
+        if t >= keep_from or t == T - 1:
+            store[t] = (alive, {k: array("f", [R[k].get(i, 0.0) for i in alive]) for k in FKEYS})
+            for hn, frr in fwd.items():
+                fstore[(t, hn)] = array("f", [frr.get(i, NAN) for i in alive])
+        if t == T - 1:
+            last_R = R
+        if t % 20 == 0:
+            say("檢驗因子 %d/%d 天" % (t, T), t, T)
+
+    # ---- 自動調校：比較幾種「權重調整速度」，用實測結果挑最準的（每天都重新比一次）
+    say("依實測結果自動調校")
+    cfg = tune_main(D, store, fstore, ic_hist)
+
+    # ---- 第二輪：用選定的設定，逐日算綜合分數（每天只用當時已揭曉的 IC）
+    say("計算綜合分數")
+    for t in sorted(store):
+        alive, Rk = store[t]
         for hn in HN:
             h = H[hn]
-            W[hn] = learned_weights(ic_hist[hn], t - h, hn)
-            weights_hist[hn].append(W[hn])
-        # 綜合分數 → 百分位
-        if t >= keep_from or t == T - 1:
-            for hn in HN:
-                w = W[hn]
-                comp = []
-                for i in alive:
-                    sc = 0.0
-                    for k in FKEYS:
-                        r = R[k].get(i)
-                        if r is not None:
-                            sc += w[k] * r
-                    comp.append((sc, i))
-                pr = rank_unit(comp)
-                pct = {i: (u + 1) / 2 for i, u in pr.items()}
-                pct_hist[hn][t] = pct
-                if hn in fwd:
-                    fr, frr = fwd[hn]
-                    xs, ys = [], []
-                    for i, y in frr.items():
-                        if i in pct:
-                            xs.append(pct[i])
-                            ys.append(y)
-                    c = pearson(xs, ys)
-                    if c is not None:
-                        comp_ic[hn].append((t, c))
-        if t == T - 1:
-            last_R, last_w = R, W
-        if t % 20 == 0:
-            say("模型回測 %d/%d 天" % (t, T), t, T)
+            w = learned_weights(ic_hist[hn], t - h, hn, cfg[hn]["hl"], cfg[hn]["sk"])
+            weights_hist[hn].append(w)
+            comp = composite_arr(Rk, w, len(alive))
+            pr = rank_unit([(comp[j], alive[j]) for j in range(len(alive))])
+            pct = {i: (u + 1) / 2 for i, u in pr.items()}
+            pct_hist[hn][t] = pct
+            fa = fstore.get((t, hn))
+            if fa is not None:
+                xs, ys = [], []
+                for j, i in enumerate(alive):
+                    y = fa[j]
+                    if y == y:
+                        xs.append(pct[i])
+                        ys.append(y)
+                c = pearson(xs, ys)
+                if c is not None:
+                    comp_ic[hn].append((t, c))
+    last_w = {hn: weights_hist[hn][-1] for hn in HN}
+    del store, fstore
 
     say("整理結果")
     last = T - 1
@@ -1193,9 +1194,119 @@ def run_engine(prog=None):
     return results, D, A_all
 
 
-def learned_weights(ic_list_by_f, upto, hn):
+# ====================================================================== 自動調校
+
+TUNE_PATH = os.path.join(DB, "tuning.json")
+HL_LABEL = {30: "很快", 60: "快", 120: "中等", 240: "慢"}
+SK_LABEL = {10: "重視近期實測", 30: "較保守"}
+TUNE_CANDS = [{"hl": hl, "sk": sk, "name": "%s調整・%s" % (HL_LABEL[hl], SK_LABEL[sk])}
+              for hl in (30, 60, 120, 240) for sk in (10, 30)] + \
+             [{"hl": 120, "sk": 100, "name": "以預設為主・小幅依實測調整"},
+              {"hl": 240, "sk": 400, "name": "以預設為主・微調"},
+              {"hl": 60, "sk": 1e12, "name": "固定預設權重（不依實測調整）"}]
+TUNE_EVAL_HL = 60       # 評分時，越近的日子越重要（半衰期 60 個交易日）
+TUNE_MARGIN = 0.003     # 新設定要明顯比較好（IC 高 0.003 以上）才換，避免每天換來換去
+
+
+def _ew_mean(pairs, last_t, hl):
+    lam = 0.5 ** (1.0 / hl)
+    sw = s = 0.0
+    for t, v in pairs:
+        if v is None:
+            continue
+        w = lam ** (last_t - t)
+        sw += w
+        s += w * v
+    return s / sw if sw else None
+
+
+def tune_main(D, store, fstore, ic_hist, step=3):
+    """比較不同的權重調整速度：每種設定都用「當時已知的資料」逐日打分數，
+    再看分數和之後實際報酬的相關性（IC），挑最準的。結果與換設定紀錄存在 tuning.json。"""
+    st = read_json(TUNE_PATH, {}) or {}
+    cur = st.get("main") or {}
+    day = D.days[-1]
+    cfg, table = {}, {}
+    hist = [x for x in st.get("history", []) if x.get("day") != day or x.get("part") != "main"]
+    log_ = list(st.get("log", []))
+    for hn in HN:
+        h = H[hn]
+        ev = sorted(t for t in store if (t, hn) in fstore)
+        ev = ev[::-1][::step][::-1]
+        res = []
+        if len(ev) >= 10:
+            last_t = ev[-1]
+            for c in TUNE_CANDS:
+                ics = []
+                for t in ev:
+                    alive, Rk = store[t]
+                    fa = fstore[(t, hn)]
+                    w = learned_weights(ic_hist[hn], t - h, hn, c["hl"], c["sk"])
+                    comp = composite_arr(Rk, w, len(alive))
+                    xs, ys = [], []
+                    for j in range(len(alive)):
+                        y = fa[j]
+                        if y == y:
+                            xs.append((comp[j], len(xs)))
+                            ys.append(y)
+                    pr = rank_unit(xs)
+                    ics.append((t, pearson([pr[j] for j in range(len(ys))], ys)))
+                vals = [v for _, v in ics if v is not None]
+                n3 = max(1, len(vals) // 3)
+                res.append({"name": c["name"], "hl": c["hl"], "sk": c["sk"],
+                            "score": _ew_mean(ics, last_t, TUNE_EVAL_HL),
+                            "all": sum(vals) / len(vals) if vals else None,
+                            "recent": sum(vals[-n3:]) / n3 if vals else None,
+                            "win": sum(1 for v in vals if v > 0) / len(vals) if vals else None,
+                            "n": len(vals)})
+        ok = [r for r in res if r["score"] is not None]
+        if not ok:
+            c0 = cur.get(hn) or {"hl": HALF_LIFE[hn], "sk": SHRINK_DEFAULT, "name": "預設"}
+            cfg[hn] = c0
+            continue
+        best = max(ok, key=lambda r: r["score"])
+        prev = cur.get(hn)
+        prev_r = next((r for r in ok if prev and r["name"] == prev.get("name")), None)
+        if prev_r and best["score"] - prev_r["score"] < TUNE_MARGIN:
+            chosen = prev_r
+        else:
+            chosen = best
+            if (not prev or prev.get("name") != best["name"]) and not any(
+                    x.get("day") == day and x.get("hn") == hn and x.get("to") == best["name"] for x in log_):
+                log_.append({"day": day, "part": "main", "hn": hn, "from": prev.get("name") if prev else None,
+                             "to": best["name"], "gain": None if not prev_r else round(best["score"] - prev_r["score"], 4)})
+        cfg[hn] = {"hl": chosen["hl"], "sk": chosen["sk"], "name": chosen["name"]}
+        for r in res:
+            r["chosen"] = r["name"] == chosen["name"]
+            for k in ("score", "all", "recent", "win"):
+                if r[k] is not None:
+                    r[k] = round(r[k], 4)
+        table[hn] = sorted(res, key=lambda r: -(r["score"] if r["score"] is not None else -9))
+        fixed = next((r for r in res if r["sk"] >= 1e11), None)
+        hist.append({"day": day, "part": "main", "hn": hn, "name": chosen["name"], "score": chosen["score"],
+                     "fixed": fixed["score"] if fixed else None})
+    st["main"] = cfg
+    st.setdefault("eval", {})["main"] = table
+    st["eval_day"] = day
+    st["history"] = hist[-900:]
+    st["log"] = log_[-200:]
+    write_json(TUNE_PATH, st)
+    return cfg
+
+
+def composite_arr(Rk, w, n):
+    comp = [0.0] * n
+    for k, arr in Rk.items():
+        wk = w[k]
+        if wk:
+            comp = [c + wk * x for c, x in zip(comp, arr)]
+    return comp
+
+
+def learned_weights(ic_list_by_f, upto, hn, hl=None, sk=None):
     """以指數加權平均 IC 估計每個因子的預測力，資料少時向預設權重收斂。"""
-    hl = HALF_LIFE[hn]
+    hl = hl or HALF_LIFE[hn]
+    SHRINK_K = SHRINK_DEFAULT if sk is None else sk
     lam = 0.5 ** (1.0 / hl)
     h = H[hn]
     W = {}

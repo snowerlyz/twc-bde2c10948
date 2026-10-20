@@ -458,3 +458,20 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .gtbl th:first-child, .gtbl td:first-child { padding-left: 14px; }
   .gtbl .hide-s2 { display: none; }
 }
+.pill.sm { height: 22px; min-width: 0; font-size: 12px; padding: 0 9px; }
+.checklink { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ink); padding: 14px 16px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); }
+.card.checklink { padding: 16px 20px; }
+.checklink > svg { width: 26px; height: 26px; flex: none; color: var(--brass); }
+.checklink > span:nth-child(2) { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.checklink:hover { border-color: var(--brass); }
+.sumtbl td { vertical-align: top; }
+.sumtbl td.txt { min-width: 150px; }
+.tune td, .tune th { padding: 7px 8px; }
+.tune td.txt { min-width: 170px; font-size: 13px; }
+.tune tr.on td { background: var(--brass-soft); }
+.tune tr.on td.txt { color: var(--ink); font-weight: 600; }
+.tbar { height: 4px; border-radius: 99px; background: var(--surface-3); margin-top: 4px; overflow: hidden; }
+.tbar i { display: block; height: 100%; border-radius: 99px; }
+.tbar i.u { background: var(--up); } .tbar i.d { background: var(--down); }
+.fw2 .b { grid-template-columns: minmax(150px, 230px) 1fr 60px; }
+@media (max-width: 860px) { .fw2 .b { grid-template-columns: 110px 1fr 44px; } }

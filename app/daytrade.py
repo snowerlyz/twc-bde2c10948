@@ -11,7 +11,9 @@
 """
 import math
 
-from util import is_etf
+import os
+
+from util import DB, is_etf, read_json, write_json
 
 NAN = float("nan")
 # 來回成本：手續費 0.1425% × 2 × 6 折 ＋ 當沖證交稅 0.15%
@@ -19,7 +21,13 @@ COST = 0.001425 * 2 * 0.6 + 0.0015
 DT_MIN_VALUE = 1e8      # 20 日均成交金額至少 1 億，才有足夠流動性當沖
 DT_MIN_PRICE = 10.0
 HALF_LIFE = 30
-SHRINK_K = 15.0
+SHRINK_DEFAULT = 15.0
+TUNE_PATH = os.path.join(DB, "tuning.json")
+DT_CANDS = [{"hl": hl, "sk": sk, "name": "%s調整・%s" % ({10: "很快", 30: "快", 90: "中等"}[hl], {5: "重視近期實測", 15: "較保守"}[sk])}
+            for hl in (10, 30, 90) for sk in (5, 15)] + \
+           [{"hl": 60, "sk": 60, "name": "以預設為主・小幅依實測調整"},
+            {"hl": 30, "sk": 1e12, "name": "固定預設權重（不依實測調整）"}]
+TUNE_MARGIN = 0.003
 CAL_WIN = 60
 
 DT_FACTORS = [
@@ -153,8 +161,9 @@ def _pearson(a, b):
     return sab / math.sqrt(saa * sbb)
 
 
-def _weights(ic_hist, upto):
-    lam = 0.5 ** (1.0 / HALF_LIFE)
+def _weights(ic_hist, upto, hl=None, sk=None):
+    lam = 0.5 ** (1.0 / (hl or HALF_LIFE))
+    SHRINK_K = sk if sk is not None else SHRINK_DEFAULT
     W = {}
     for k in DKEYS:
         sw = sv = 0.0
@@ -219,6 +228,78 @@ def reason(k, v, w):
     return None
 
 
+def _comp(Rk, W, n):
+    comp = [0.0] * n
+    for k, arr in Rk.items():
+        wk = W[k]
+        if wk:
+            comp = [c + wk * x for c, x in zip(comp, arr)]
+    return comp
+
+
+def _tune(D, stored, univ_hist, ic_hist):
+    st = read_json(TUNE_PATH, {}) or {}
+    prev = st.get("dt")
+    day = D.days[-1]
+    ev = [t for t in sorted(stored) if univ_hist.get(t)]
+    res = []
+    if len(ev) >= 20:
+        last_t = ev[-1]
+        lam = 0.5 ** (1.0 / 30)
+        for c in DT_CANDS:
+            ics = []
+            for t in ev:
+                univ, Rk = stored[t]
+                out = univ_hist[t]
+                comp = _comp(Rk, _weights(ic_hist, t - 1, c["hl"], c["sk"]), len(univ))
+                xs, ys = [], []
+                for j, i in enumerate(univ):
+                    o = out.get(i)
+                    if o is not None:
+                        xs.append((comp[j], len(xs)))
+                        ys.append(o[0])
+                pr = _rank_unit(xs)
+                ics.append((t, _pearson([pr[j] for j in range(len(ys))], ys)))
+            vals = [v for _, v in ics if v is not None]
+            sw = sum(lam ** (last_t - t) for t, v in ics if v is not None)
+            sc = sum(lam ** (last_t - t) * v for t, v in ics if v is not None) / sw if sw else None
+            n3 = max(1, len(vals) // 3)
+            res.append({"name": c["name"], "hl": c["hl"], "sk": c["sk"], "score": sc,
+                        "all": sum(vals) / len(vals) if vals else None,
+                        "recent": sum(vals[-n3:]) / n3 if vals else None,
+                        "win": sum(1 for v in vals if v > 0) / len(vals) if vals else None, "n": len(vals)})
+    ok = [r for r in res if r["score"] is not None]
+    if not ok:
+        return prev or {"hl": HALF_LIFE, "sk": SHRINK_DEFAULT, "name": "預設"}
+    best = max(ok, key=lambda r: r["score"])
+    prev_r = next((r for r in ok if prev and r["name"] == prev.get("name")), None)
+    log_ = list(st.get("log", []))
+    if prev_r and best["score"] - prev_r["score"] < TUNE_MARGIN:
+        chosen = prev_r
+    else:
+        chosen = best
+        if (not prev or prev.get("name") != best["name"]) and not any(
+                x.get("day") == day and x.get("hn") == "dt" and x.get("to") == best["name"] for x in log_):
+            log_.append({"day": day, "part": "dt", "hn": "dt", "from": prev.get("name") if prev else None,
+                         "to": best["name"], "gain": None if not prev_r else round(best["score"] - prev_r["score"], 4)})
+    for r in res:
+        r["chosen"] = r["name"] == chosen["name"]
+        for k in ("score", "all", "recent", "win"):
+            if r[k] is not None:
+                r[k] = round(r[k], 4)
+    cfg = {"hl": chosen["hl"], "sk": chosen["sk"], "name": chosen["name"]}
+    st["dt"] = cfg
+    st.setdefault("eval", {})["dt"] = sorted(res, key=lambda r: -(r["score"] if r["score"] is not None else -9))
+    hist = [x for x in st.get("history", []) if x.get("day") != day or x.get("part") != "dt"]
+    fixed = next((r for r in res if r["sk"] >= 1e11), None)
+    hist.append({"day": day, "part": "dt", "hn": "dt", "name": chosen["name"], "score": chosen["score"],
+                 "fixed": fixed["score"] if fixed else None})
+    st["history"] = hist[-900:]
+    st["log"] = log_[-200:]
+    write_json(TUNE_PATH, st)
+    return cfg
+
+
 def run(D, A_all, say=None):
     T, codes = D.T, D.codes
     N = len(codes)
@@ -236,6 +317,7 @@ def run(D, A_all, say=None):
     keep_from = max(0, T - 130)
     pct_hist, univ_hist = {}, {}
     last_R = last_W = None
+    stored = {}
     for t in range(T):
         univ = []
         for i, code in enumerate(codes):
@@ -276,28 +358,31 @@ def run(D, A_all, say=None):
                     cc = _pearson(xs, ys)
                     if cc is not None:
                         ic_hist[k].append((t, cc))
-        W = _weights(ic_hist, t - 1)
         if t >= keep_from or t == T - 1:
-            comp = []
-            for i in univ:
-                sc = 0.0
-                for k in DKEYS:
-                    r = R[k].get(i)
-                    if r is not None:
-                        sc += W[k] * r
-                comp.append((sc, i))
-            pr = _rank_unit(comp)
-            pct = {i: (u + 1) / 2 for i, u in pr.items()}
-            pct_hist[t] = pct
+            stored[t] = (univ, {k: [R[k].get(i, 0.0) for i in univ] for k in DKEYS})
             univ_hist[t] = out
-            if out:
-                xs = [pct[i] for i in out if i in pct]
-                ys = [out[i][0] for i in out if i in pct]
-                cc = _pearson(xs, ys)
-                if cc is not None:
-                    comp_ic.append((t, cc))
         if t == T - 1:
-            last_R, last_W = R, W
+            last_R = R
+
+    # ---- 自動調校：比較不同的權重調整速度，挑實測最準的
+    if say:
+        say("當沖模型：依實測結果自動調校")
+    cfg = _tune(D, stored, univ_hist, ic_hist)
+    for t in sorted(stored):
+        univ, Rk = stored[t]
+        W = _weights(ic_hist, t - 1, cfg["hl"], cfg["sk"])
+        comp = _comp(Rk, W, len(univ))
+        pr = _rank_unit([(comp[j], univ[j]) for j in range(len(univ))])
+        pct = {i: (u + 1) / 2 for i, u in pr.items()}
+        pct_hist[t] = pct
+        out = univ_hist[t]
+        if out:
+            xs = [pct[i] for i in out if i in pct]
+            ys = [out[i][0] for i in out if i in pct]
+            cc = _pearson(xs, ys)
+            if cc is not None:
+                comp_ic.append((t, cc))
+        last_W = W
 
     # ---- 回測統計（每天：分數前 10% 做多、後 10% 做空）
     longs, shorts, spreads = [], [], []
