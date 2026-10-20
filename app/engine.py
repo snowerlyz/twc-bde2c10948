@@ -395,6 +395,8 @@ GLOBAL_DEF = [
     ("^SOX", "費城半導體"), ("^IXIC", "那斯達克"), ("^GSPC", "標普 500"), ("TSM", "台積電 ADR"),
     ("^VIX", "美股恐慌指數 VIX"), ("^TNX", "美國 10 年債利率"), ("TWD=X", "美元兌新台幣"), ("DX-Y.NYB", "美元指數"),
     ("^N225", "日經 225"), ("CL=F", "西德州原油"),
+    ("^DJI", "道瓊工業"), ("^KS11", "韓國綜合"), ("^HSI", "香港恒生"), ("000001.SS", "上海綜合"),
+    ("^GDAXI", "德國 DAX"), ("NVDA", "輝達"), ("GC=F", "黃金"),
 ]
 
 
@@ -1243,6 +1245,7 @@ def run_engine(prog=None):
     results = build_outputs(D, FA, A_all, traded_all, val20_all, ma_all, last_R, last_w,
                             pct_hist, ic_hist, comp_ic, weights_hist, mkt)
     results["FA"] = FA
+    results["pct_hist"] = pct_hist
     say("完成，耗時 %.0f 秒" % (time.time() - t0))
     return results, D, A_all
 

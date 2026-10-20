@@ -255,10 +255,17 @@ def collect_global():
                 gmtoff = r["meta"].get("gmtoffset") or 0
                 closes = r["indicators"]["quote"][0]["close"]
                 series = {}
+                # 盤中抓到的「今天」還沒收盤，不算（避免把盤中價當收盤價）
+                reg = ((r["meta"].get("currentTradingPeriod") or {}).get("regular") or {})
+                live_end = reg.get("end") or 0
+                live_day = dt.datetime.utcfromtimestamp((reg.get("start") or 0) + gmtoff).strftime("%Y%m%d") if reg.get("start") else None
+                still_open = time.time() < live_end
                 for ts, c in zip(r["timestamp"], closes):
                     if c is None:
                         continue
                     d = dt.datetime.utcfromtimestamp(ts + gmtoff).strftime("%Y%m%d")
+                    if still_open and d == live_day:
+                        continue
                     series[d] = round(float(c), 4)
                 if series:
                     out[sym] = {"name": name, "tz": tz, "s": series}

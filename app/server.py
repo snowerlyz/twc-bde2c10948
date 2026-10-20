@@ -140,6 +140,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._file_json(os.path.join(RESULTS, "futures.json"))
         if p == "daytrade":
             return self._file_json(os.path.join(RESULTS, "daytrade.json"))
+        if p in ("sectors", "global", "report"):
+            return self._file_json(os.path.join(RESULTS, p + ".json"))
         if p == "tuning":
             return self._file_json(os.path.join(RESULTS, "tuning.json"))
         if p == "warrant_picks":

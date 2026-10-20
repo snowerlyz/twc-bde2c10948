@@ -71,6 +71,7 @@ const GLOSS = {
   score: "分數 0～100，50 分代表看不出方向；越高越可能漲，越低越可能跌。75 分以上＝強烈看多，25 分以下＝強烈看空。分數綜合約 35 項指標：股價走勢、法人買賣、公司營收獲利、新聞消息，再加上大盤與美股等國際行情。短期看 1 週、中期看 1 個月、長期看 3 個月。",
   rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，分數也會自動往 50 靠攏，不給太肯定的判斷。等它重新變準，可信度會自己回升。",
   tune: "模型每天收盤後會自我檢討：試好幾種做法（例如各項指標的比重要不要、要多快跟著最近表現調整），用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種。",
+  link: "連動：用過去約 200 個交易日統計，國外市場前一晚的漲跌，和這個類股隔天漲跌的關係。「連動高」代表常常同方向一起動；數字是平均關係，個別日子可能完全不同。",
   news: "收集鉅亨網、Yahoo 股市的財經新聞，和公司在公開資訊觀測站發布的重大訊息，依標題用字判斷偏好消息（利多）還是壞消息（利空）。這是用關鍵字粗略判斷，可能看錯，重要消息請點開原文確認。",
   glob: "台股常跟著國外走：美國股市（特別是半導體類股）、台積電在美國的股價、美元匯率、美國利率。這些已經算進大盤分數。美股是前一晚的收盤價。",
   upprob: "過去分數跟它差不多的股票，在這段期間後真的上漲的比例。是過去的統計，不是保證。",
@@ -121,17 +122,22 @@ const ICON = {
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
   news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2V5Z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 16h4"/>',
+  sector: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
+  report: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7M9 8h3"/>',
+  more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
 };
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
-  ["#/", "總覽", "home"], ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
+  ["#/", "總覽", "home"], ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
+  ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
   ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/check", "實測對答案", "target"], ["#/model", "分數怎麼算", "model"], ["#/help", "使用說明", "help"],
 ];
 $("#nav").innerHTML = NAV.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
-$("#tabbar").innerHTML = NAV.slice(0, 6).map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
+const TABS = [["#/", "總覽", "home"], ["#/report", "盤後", "report"], ["#/sectors", "類股", "sector"], ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/menu", "更多", "more"]];
+$("#tabbar").innerHTML = TABS.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
 
 // ====================================================================== 資料
 const cache = {};
@@ -474,6 +480,11 @@ async function route() {
     else if (page === "watch") await vWatch(tok);
     else if (page === "model") await vModel(tok);
     else if (page === "check") await vCheck(tok);
+    else if (page === "report") await vReport(tok);
+    else if (page === "sectors") await vSectors(tok);
+    else if (page === "sector") await vSector(tok, decodeURIComponent(arg));
+    else if (page === "global") await vGlobal(tok);
+    else if (page === "menu") vMenu();
     else if (page === "help") await vHelp(tok);
     else await vHome(tok);
   } catch (e) {
@@ -501,8 +512,9 @@ async function vHome(tok) {
   const mod = L.model[hz];
   const ind = L.industries || [];
   const w = S.watch.map((c) => S.byCode[c]).filter(Boolean).slice(0, 6);
-  let picks = [];
+  let picks = [], RP = null;
   try { picks = (await api("warrant_picks")).picks.slice(0, 5); } catch { }
+  try { RP = await api("report"); } catch { }
   if (tok !== routeToken) return;
   view.innerHTML = `
   <h1 class="grad">今天的台股氣氛</h1>
@@ -515,13 +527,14 @@ async function vHome(tok) {
       <ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
     </div>
   </section>
+  ${RP ? `<a class="card checklink section" href="#/report">${svgI("report")}<span><b>盤後報告：${esc(RP.title)}</b><span class="note">${esc(((RP.blocks.find((b) => b.h === "法人動向") || {}).lines || [""])[0])}</span></span><span class="more">看完整報告</span></a>` : ""}
   ${M.global && M.global.rows && M.global.rows.length || M.news ? `<div class="grid g2 section">${globalCard(M.global)}${newsCard(M.news)}</div>` : ""}
   <div class="grid g2 section">
     <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>未來 ${HZ_SHORT[S.hz]}最看好的 10 檔</h2>${help("score")}<a class="more" href="#/stocks">看全部股票</a></div><div class="list">${top.map((r) => stockRow(r)).join("")}</div></section>
     <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>未來 ${HZ_SHORT[S.hz]}最不看好的 10 檔</h2><a class="more" href="#/stocks?asc">看全部股票</a></div><div class="list">${bot.map((r) => stockRow(r)).join("")}</div></section>
   </div>
   <div class="grid g2 section">
-    <section class="card"><div class="card-h"><h2>哪些產業比較強</h2><span class="note">產業內股票的平均分數（未來 ${HZ_SHORT[S.hz]}）</span></div>
+    <section class="card"><div class="card-h"><h2>哪些產業比較強</h2><span class="note">產業內股票的平均分數（未來 ${HZ_SHORT[S.hz]}）</span><a class="more" href="#/sectors">看類股分析</a></div>
       <div class="bars" id="indbars">${indBars(ind, 12)}</div>
       ${ind.length > 12 ? `<button class="btn" style="margin-top:12px" id="indall">顯示全部 ${ind.length} 個產業</button>` : ""}</section>
     <section class="card"><a class="checklink" href="#/check">${svgI("target")}<span><b>分數準不準？</b><span class="note">每天拿以前的分數和真正的漲跌對答案，模型也會依結果自我調整</span></span><span class="pill ${relInfo(mod && mod.rel).c} sm">可信度 ${relInfo(mod && mod.rel).t}</span></a>
@@ -890,9 +903,9 @@ function globalCard(G) {
   const fmtV = (r) => r.unit === "pt" ? r.v.toFixed(2) + "%" : r.v >= 1000 ? fmtInt(Math.round(r.v)) : r.v.toFixed(r.v >= 100 ? 1 : 2);
   const ch = (r, x) => x == null ? "—" : r.unit === "pt" ? `<span class="${cls(x)}">${x > 0 ? "+" : ""}${x.toFixed(2)}</span>` : chgHtml(x, 1);
   const NOTE = { "^SOX": "台股電子股的風向球", "^IXIC": "美國科技股", "^GSPC": "美國大型股", "TSM": "台積電在美國的股價", "^VIX": "越高代表市場越緊張", "^TNX": "利率；變化以百分點計", "TWD=X": "數字變大＝台幣貶值", "DX-Y.NYB": "美元強弱", "^N225": "日本股市", "CL=F": "國際油價" };
-  return `<section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${svgI("globe")} 國際市場</h2>${help("glob")}<span class="note" style="margin-left:auto">${G.at ? "更新 " + esc(G.at.slice(5)) : ""}</span></div>
+  return `<section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${svgI("globe")} 國際市場</h2>${help("glob")}<a class="more" href="#/global">看國際股市分析</a></div>
     <div class="tbl-wrap"><table class="tbl gtbl"><thead><tr><th style="text-align:left">項目</th><th>最新</th><th>1 日</th><th>1 週</th><th class="hide-s2">1 個月</th><th class="hide-s">近 3 個月</th></tr></thead><tbody>
-    ${G.rows.map((r) => `<tr><td style="text-align:left"><b>${esc(r.name)}</b>${NOTE[r.sym] ? `<br><span class="muted small">${NOTE[r.sym]}</span>` : ""}</td><td class="num">${fmtV(r)}</td><td>${ch(r, r.c1)}</td><td>${ch(r, r.c5)}</td><td class="hide-s2">${ch(r, r.c20)}</td><td class="hide-s">${spark(r.spark, (r.spark[r.spark.length - 1] ?? 0) >= (r.spark[0] ?? 0))}</td></tr>`).join("")}
+    ${G.rows.filter((r) => !["^DJI", "^KS11", "^HSI", "000001.SS", "^GDAXI", "NVDA", "GC=F"].includes(r.sym)).map((r) => `<tr><td style="text-align:left"><b>${esc(r.name)}</b>${NOTE[r.sym] ? `<br><span class="muted small">${NOTE[r.sym]}</span>` : ""}</td><td class="num">${fmtV(r)}</td><td>${ch(r, r.c1)}</td><td>${ch(r, r.c5)}</td><td class="hide-s2">${ch(r, r.c20)}</td><td class="hide-s">${spark(r.spark, (r.spark[r.spark.length - 1] ?? 0) >= (r.spark[0] ?? 0))}</td></tr>`).join("")}
     </tbody></table></div><p class="note" style="padding:8px 22px 16px;margin:0">美股是前一晚的收盤。這些數字已經算進大盤分數。</p></section>`;
 }
 function sentTag(x) {
@@ -1070,6 +1083,21 @@ async function vCheck(tok) {
       </div>
     </div></section>`;
   }).join("");
+  let SEC = null;
+  try { SEC = await api("sectors"); } catch { }
+  const SC = (SEC && SEC.check) || {}, IM = SEC && SEC.impact;
+  const secCheck = Object.keys(SC).length ? `<section class="card section"><div class="card-h"><h2>${svgI("sector")} 類股分數準不準</h2><a class="more" href="#/sectors">看類股</a></div>
+    <p style="margin:0 0 10px">每天依「類股內股票的平均分數」把類股排名，看分數最高的 5 個類股，之後是不是真的比分數最低的 5 個表現好。</p>
+    <div class="grid g3">${HZ.map((h, i) => { const c = SC[h]; if (!c) return `<div class="concl"><h3>${HZ_NAME[i]}<small>未來 ${HZ_SHORT[i]}</small></h3><p class="note">資料累積中</p></div>`; const good = c.spread > 0.002 && c.win > 0.53; return `<div class="concl"><h3>${HZ_NAME[i]}<small>未來 ${HZ_SHORT[i]}</small></h3><ul>${`<li class="cl ${good ? "ok" : "no"}"><i>${good ? "✓" : "✗"}</i><span><b>${good ? (c.win >= 0.6 ? "有用" : "有一點用") : "沒什麼用"}：</b>高分類股平均比低分類股${c.spread >= 0 ? "多賺" : "少賺"} ${Math.abs(c.spread * 100).toFixed(1)}%，10 次裡約有 ${Math.round(c.win * 10)} 次是這樣。</span></li>`}</ul><p class="note">統計 ${c.n} 個交易日</p></div>`; }).join("")}</div></section>` : "";
+  const G3 = IM && IM.groups;
+  const impRow = (k) => { const g = G3 && G3[k]; if (!g) return ""; const d1 = g.d1 || {}, d5 = g.d5 || {}; return `<tr><td><b>${k}</b></td><td>${d1.n ? R(d1.avg) : "—"}<br><span class="muted small">${d1.n ? `${P(d1.beat)} 比大盤好・${d1.n} 則` : "累積中"}</span></td><td>${d5.n ? R(d5.avg) : "—"}<br><span class="muted small">${d5.n ? `${P(d5.beat)} 比大盤好・${d5.n} 則` : "累積中"}</span></td></tr>`; };
+  const enough = G3 && ((G3["利多"].d1 || {}).n || 0) + ((G3["利空"].d1 || {}).n || 0) >= 60;
+  const impSec = IM ? `<section class="card section"><div class="card-h"><h2>${svgI("news")} 消息出來後，股價真的有反應嗎？</h2>${help("news")}</div>
+    <p style="margin:0 0 10px">把每一則提到個股的新聞和公告，看它<b>發布之後</b>的股價比大盤多漲或少漲多少（開盤前發布的從當天算，盤中和收盤後發布的從下一個交易日算，避免把「股價先動、新聞才寫」算進去）。</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>消息類型</th><th>隔天比大盤多漲</th><th>5 天內比大盤多漲</th></tr></thead><tbody>${impRow("利多")}${impRow("利空")}${impRow("中性")}</tbody></table></div>
+    <p class="note" style="margin:8px 0 0">${enough ? "" : `新聞從 ${dayFull(IM.first || "")} 開始收集，目前樣本還少（共 ${IM.events} 則），數字會隨每天累積越來越可信。`}「利多」消息如果平均真的比大盤好、「利空」比大盤差，代表消息有參考價值；模型也會依這個結果自動調整新聞的比重。</p>
+    ${IM.by_ind && IM.by_ind.length ? `<h3 style="margin-top:12px">各類股對消息的反應（隔天比大盤多漲）</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>類股</th><th>利多消息</th><th>利空消息</th></tr></thead><tbody>${IM.by_ind.map((x) => `<tr><td><b>${esc(x.ind)}</b></td><td>${x.pos != null ? R(x.pos) + `<span class="muted small"> ${x.pos_n} 則</span>` : "—"}</td><td>${x.neg != null ? R(x.neg) + `<span class="muted small"> ${x.neg_n} 則</span>` : "—"}</td></tr>`).join("")}</tbody></table></div>` : ""}
+  </section>` : "";
   const dtSec = DM ? `<section class="card section"><div class="card-h"><h2>當沖：隔天開盤買、收盤賣<span class="note" style="margin-left:8px">已扣手續費和稅</span></h2><a class="more" href="#/daytrade">看當沖名單</a></div>
     <div class="grid g3">
       <div><div class="kv"><div><span>照分數先買後賣（分數最高一成）</span><b>${P(DM.long && DM.long.win, 1)}</b><span class="note">賺錢的機會・平均每筆 ${R(DM.long && DM.long.avg)}</span></div>
@@ -1093,6 +1121,8 @@ async function vCheck(tok) {
     ${histDays.length >= 5 ? `<h3 style="margin-top:16px">每天的比較結果</h3><p class="note" style="margin:2px 0 8px">金線＝採用的做法，灰虛線＝固定比重（對照）；金線比灰線高，代表調整真的有幫助</p><div class="grid g2" id="tuneh"></div>` : `<p class="note" style="margin-top:10px">每天的比較結果會一天天累積（目前 ${histDays.length} 天），滿 5 天後這裡會出現走勢圖。</p>`}
   </section>
   ${sections}
+  ${secCheck}
+  ${impSec}
   ${dtSec}
   <p class="disclaimer">以上都是過去的成績，不保證未來。因為每天都算「之後 1 週、1 個月、3 個月」這類互相重疊的期間，真正獨立的樣本比天數少，數字會有誤差。另外，自我調整是用同一段歷史挑出最好的做法，所以這段歷史的成績會稍微好看一點。</p>`;
   const draw = () => {
@@ -1128,6 +1158,142 @@ function tuneChart(box, hs) {
 }
 const H_D = ["5 個交易日", "20 個交易日", "60 個交易日"];
 
+// ====================================================================== 盤後報告
+function chipList(list, kind) {
+  if (!list || !list.length) return '<p class="note">無</p>';
+  return `<div class="chips">${list.map((x) => `<a class="chip" href="#/stock/${x.c}"><b>${esc(x.n)}</b>${x.v != null ? `<span class="num ${kind === "flow" ? cls(x.v) : ""}">${kind === "flow" ? (x.v > 0 ? "+" : "") + x.v.toFixed(1) + " 億" : x.v.toFixed(0) + " 億"}</span>` : ""}${x.chg != null ? `<span class="num">${chgHtml(x.chg)}</span>` : ""}</a>`).join("")}</div>`;
+}
+async function vReport(tok) {
+  const R = await api("report").catch(() => null);
+  let SEC = null;
+  try { SEC = await api("sectors"); } catch { }
+  if (tok !== routeToken) return;
+  if (!R) { view.innerHTML = `<h1>盤後報告</h1><div class="card empty"><h2>盤後報告準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  const ICONS = { "大盤": "home", "法人動向": "list", "類股": "sector", "個股焦點": "star", "消息面": "news", "國際股市": "globe", "接下來怎麼看": "target" };
+  const blk = (b) => `<section class="card section rblock"><div class="card-h"><h2>${svgI(ICONS[b.h] || "list")} ${esc(b.h)}</h2>${b.h === "類股" ? '<a class="more" href="#/sectors">看全部類股</a>' : b.h === "國際股市" ? '<a class="more" href="#/global">看國際股市</a>' : b.h === "接下來怎麼看" ? '<a class="more" href="#/check">準不準？</a>' : ""}</div>
+    ${(b.lines || []).map((l) => `<p class="rline">${esc(l)}</p>`).join("")}
+    ${(b.tops || []).map((t) => `<h3>${esc(t.t)}</h3>${chipList(t.list, b.h === "法人動向" ? "flow" : "val")}`).join("")}
+    ${b.news && b.news.length ? `<ul class="newslist tight">${b.news.map((n) => `<li>${sentTag(n.s)}<a href="${esc(n.u)}" target="_blank" rel="noopener">${esc(n.t)}</a><span class="muted small">${esc(n.src || "")}${n.codes && n.codes.length ? "・" + n.codes.map((c) => esc(c.n)).join("、") : ""}</span></li>`).join("")}</ul>` : ""}
+  </section>`;
+  const secs = SEC ? SEC.sectors.filter((s) => s.n >= 6) : [];
+  const heat = secs.length ? `<section class="card section"><div class="card-h"><h2>${svgI("sector")} 類股今天的漲跌</h2><span class="note">方塊越紅漲越多、越綠跌越多；點進去看細節</span></div>
+    <div class="heat">${[...secs].sort((a, b) => (b.chg1 ?? 0) - (a.chg1 ?? 0)).map((s) => `<a href="#/sector/${encodeURIComponent(s.ind)}" style="${heatStyle(s.chg1)}"><b>${esc(s.ind)}</b><span class="num">${s.chg1 != null ? (s.chg1 > 0 ? "+" : "") + (s.chg1 * 100).toFixed(2) + "%" : "—"}</span></a>`).join("")}</div></section>` : "";
+  view.innerHTML = `<h1 class="grad">盤後報告</h1>
+  <p class="lead">${dayFull(R.day)} 收盤後的重點整理，每個交易日自動產生。<b>${esc(R.title)}</b>。</p>
+  ${R.blocks.slice(0, 1).map(blk).join("")}${heat}${R.blocks.slice(1).map(blk).join("")}${disclaimer}`;
+}
+function heatStyle(x) {
+  if (x == null) return "";
+  const a = Math.min(1, Math.abs(x) / 0.03);
+  const c = x >= 0 ? "255,93,103" : "51,213,143";
+  return `background:rgba(${c},${(0.12 + a * 0.55).toFixed(2)});border-color:rgba(${c},${(0.25 + a * 0.5).toFixed(2)})`;
+}
+
+// ====================================================================== 類股
+let secSort = "score";
+async function vSectors(tok) {
+  const SEC = await api("sectors").catch(() => null);
+  let G = null;
+  try { G = await api("global"); } catch { }
+  if (tok !== routeToken) return;
+  if (!SEC) { view.innerHTML = `<h1>類股</h1><div class="card empty"><h2>類股分析準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  const ck = SEC.check && SEC.check[HZ[S.hz]];
+  const exps = G && G.sector_exp && G.sector_exp.length ? G.sector_exp : null;
+  view.innerHTML = `<h1 class="grad">類股</h1>
+  <p class="lead">把同一產業的股票放在一起看：今天和最近的漲跌、資金和外資的流向、未來 ${HZ_SHORT[S.hz]}的平均分數、相關新聞，以及和國際股市的連動。點類股名稱看細節。</p>
+  ${ck ? `<a class="card checklink" href="#/check">${svgI("target")}<span><b>類股分數準不準？</b><span class="note">過去 ${ck.n} 天，平均分數最高的 5 個類股，${HZ_SHORT[S.hz]}後平均比最低的 5 個${ck.spread >= 0 ? "多賺" : "少賺"} ${Math.abs(ck.spread * 100).toFixed(1)}%，10 次裡約有 ${Math.round(ck.win * 10)} 次是這樣。</span></span></a>` : ""}
+  ${exps ? `<section class="card section"><div class="card-h"><h2>${svgI("globe")} 昨晚國際股市對各類股的可能影響</h2><span class="note">依過去的連動估算，只是參考</span></div>
+    <div class="chips">${exps.slice(0, 6).map((x) => `<a class="chip" href="#/sector/${encodeURIComponent(x.ind)}"><b>${esc(x.ind)}</b><span class="num ${cls(x.exp)}">${x.exp > 0 ? "+" : ""}${(x.exp * 100).toFixed(2)}%</span></a>`).join("")}${exps.length > 6 ? `<span class="note" style="align-self:center">…</span>` : ""}${exps.slice(-3).map((x) => `<a class="chip" href="#/sector/${encodeURIComponent(x.ind)}"><b>${esc(x.ind)}</b><span class="num ${cls(x.exp)}">${x.exp > 0 ? "+" : ""}${(x.exp * 100).toFixed(2)}%</span></a>`).join("")}</div></section>` : ""}
+  <div class="section"><div class="seg" id="ssort"><button data-k="score">依分數</button><button data-k="chg1">今天漲跌</button><button data-k="chg20">近 1 個月</button><button data-k="flow">資金流入</button><button data-k="fi">外資買賣</button></div></div>
+  <section class="card flush section" id="slist"></section>${disclaimer}`;
+  const draw = () => {
+    $$("#ssort button").forEach((b) => b.classList.toggle("on", b.dataset.k === secSort));
+    const key = { score: (s) => s.s[S.hz] ?? 0, chg1: (s) => s.chg1 ?? 0, chg20: (s) => s.chg20 ?? 0, flow: (s) => s.share && s.share20 ? s.share / s.share20 : 0, fi: (s) => s.fi5 ?? 0 }[secSort];
+    const arr = [...SEC.sectors].sort((a, b) => key(b) - key(a));
+    $("#slist").innerHTML = `<div class="tbl-wrap"><table class="tbl stbl"><thead><tr><th>類股</th><th>今天</th><th>近 1 個月</th><th>趨勢</th><th>資金</th><th>外資近 5 天</th><th>${hzTag(S.hz)}分數</th><th>新聞</th><th style="text-align:left">最連動的國際股市</th></tr></thead><tbody>
+      ${arr.map((s) => { const fr = s.share && s.share20 ? s.share / s.share20 - 1 : null; const L = s.links[0]; return `<tr style="cursor:pointer" onclick="location.hash='#/sector/${encodeURIComponent(s.ind)}'">
+        <td><b>${esc(s.ind)}</b><br><span class="muted small">${s.n} 檔・${s.up} 漲 ${s.dn} 跌</span></td>
+        <td>${chgHtml(s.chg1)}</td><td>${chgHtml(s.chg20, 1)}</td><td class="small">${esc(s.trend.split("（")[0])}</td>
+        <td class="small">${fr == null ? "—" : Math.abs(fr) < 0.15 ? "持平" : fr > 0 ? '<span class="up">流入</span>' : '<span class="down">流出</span>'}</td>
+        <td class="${cls(s.fi5)}">${s.fi5 > 0 ? "+" : ""}${s.fi5.toFixed(1)} 億</td>
+        <td>${pill(s.s[S.hz])}</td>
+        <td>${s.news.n ? `${sentTag(s.news.mood)}<span class="muted small"> ${s.news.n} 則</span>` : '<span class="muted small">—</span>'}</td>
+        <td class="txt">${L ? `${esc(L.name)}<span class="muted small">（${Math.abs(L.corr) >= 0.45 ? "連動高" : Math.abs(L.corr) >= 0.3 ? "連動中等" : "連動低"}）</span>` : '<span class="muted small">不明顯</span>'}</td></tr>`; }).join("")}
+      </tbody></table></div>`;
+    FX.enhance($("#slist"));
+  };
+  $("#ssort").addEventListener("click", (e) => { const b = e.target.closest("[data-k]"); if (b) { secSort = b.dataset.k; draw(); } });
+  draw();
+}
+async function vSector(tok, name) {
+  const SEC = await api("sectors");
+  if (tok !== routeToken) return;
+  const s = SEC.sectors.find((x) => x.ind === name);
+  if (!s) throw new Error("notfound");
+  const rows = s.codes.map((c) => S.byCode[c]).filter(Boolean).sort((a, b) => (b.s[S.hz] ?? 0) - (a.s[S.hz] ?? 0));
+  const fr = s.share && s.share20 ? s.share / s.share20 - 1 : null;
+  view.innerHTML = `<p><a class="note" href="#/sectors">← 回到類股</a></p>
+  <div class="sh"><div class="sht"><h1 style="margin-bottom:2px">${esc(s.ind)}</h1><div class="muted small">${s.n} 檔股票・${dayFull(SEC.day)} 收盤・${esc(s.trend)}</div></div>
+    <div class="chg" style="font-size:28px">${chgHtml(s.chg1)}</div></div>
+  <section class="card glow"><span class="glow-ring"></span><p class="rline" style="margin:0">${esc(s.text)}</p></section>
+  <div class="grid g3 section">
+    ${HZ.map((h, i) => `<section class="card hzcard ${i === S.hz ? "cur" : ""}"><div class="card-h" style="margin:0"><h2>${HZ_NAME[i]}</h2><span class="note">${HZ_SPAN[i]}</span></div>
+      <div class="hzbody"><div class="hzd">${dial(s.s[i], { animate: i === S.hz })}<div class="hzl">${labelOf(s.s[i])}</div></div>
+      <div class="hzs"><div class="stat">偏多 <b>${s.bull[i]}</b> 檔、偏空 <b>${s.bear[i]}</b> 檔</div><div class="stat note">類股內股票的平均分數</div></div></div></section>`).join("")}
+  </div>
+  <div class="grid g2 section">
+    <section class="card"><div class="card-h"><h2>類股走勢</h2><span class="note">成員股票等權平均，近 6 個月</span></div><div class="chart" id="schart"></div>
+      <div class="kv" style="margin-top:12px">
+        <div><span>近 1 週</span><b>${chgHtml(s.chg5, 1)}</b></div><div><span>近 1 個月</span><b>${chgHtml(s.chg20, 1)}</b></div><div><span>近 3 個月</span><b>${chgHtml(s.chg60, 1)}</b></div>
+        <div><span>今天成交</span><b>${s.val.toFixed(0)} 億</b><span class="note">${fr == null ? "" : Math.abs(fr) < 0.15 ? "和平常差不多" : fr > 0 ? "比平常多，資金流入" : "比平常少，資金流出"}</span></div>
+        <div><span>外資今天</span><b class="${cls(s.fi1)}">${s.fi1 > 0 ? "+" : ""}${s.fi1.toFixed(1)} 億</b><span class="note">近 5 天 ${s.fi5 > 0 ? "+" : ""}${s.fi5.toFixed(1)} 億</span></div>
+        <div><span>投信今天</span><b class="${cls(s.it1)}">${s.it1 > 0 ? "+" : ""}${s.it1.toFixed(1)} 億</b><span class="note">近 5 天 ${s.it5 > 0 ? "+" : ""}${s.it5.toFixed(1)} 億</span></div>
+      </div></section>
+    <section class="card"><div class="card-h"><h2>${svgI("globe")} 和國際股市的連動</h2>${help("link")}</div>
+      ${s.links.length ? `<ul class="facts">${s.links.map((L) => `<li><span><b>${esc(L.name)}</b>：${["^VIX", "^TNX"].includes(L.sym) ? `它上升時，這個類股隔天比較${L.beta < 0 ? "容易跌" : "容易漲"}` : `它漲 1%，這個類股隔天平均${L.beta >= 0 ? "跟著漲" : "反而跌"} ${Math.abs(L.beta).toFixed(2)}%`}（連動${Math.abs(L.corr) >= 0.45 ? "高" : Math.abs(L.corr) >= 0.3 ? "中等" : "低"}）。</span></li>`).join("")}</ul>` : '<p class="note">和國際股市的連動不明顯。</p>'}
+      ${s.exp ? `<div class="warnbox" style="margin-top:12px">昨晚${esc(s.exp.name)}${["^VIX", "^TNX"].includes(s.exp.sym) ? (s.exp.move >= 0 ? "上升" : "下降") + " " + Math.abs(s.exp.move).toFixed(2) : (s.exp.move >= 0 ? "漲 " : "跌 ") + Math.abs(s.exp.move * 100).toFixed(1) + "%"}，依過去連動估算，這個類股下一個交易日約 <b class="${cls(s.exp.exp)}">${s.exp.exp > 0 ? "+" : ""}${(s.exp.exp * 100).toFixed(2)}%</b>（只是參考）。</div>` : ""}
+    </section>
+  </div>
+  <section class="card section"><div class="card-h"><h2>${svgI("news")} 類股相關消息</h2>${help("news")}<span class="note">近 3 天 ${s.news.n} 則・好消息 ${s.news.pos}・壞消息 ${s.news.neg}</span></div>
+    ${s.news.mops.length ? `<h3>公司公告</h3><ul class="newslist tight">${s.news.mops.map((m) => `<li>${sentTag(m.s)}<span><a href="#/stock/${m.c}">${esc(m.n)}</a>：${esc(m.t)}</span></li>`).join("")}</ul>` : ""}
+    ${s.news.heads.length ? `<h3 style="margin-top:8px">新聞</h3><ul class="newslist tight">${s.news.heads.map((h) => `<li>${sentTag(h.s)}<a href="${esc(h.u)}" target="_blank" rel="noopener">${esc(h.t)}</a><span class="muted small">${esc(h.src || "")}・${ago(h.at)}</span></li>`).join("")}</ul>` : '<p class="note">最近沒有和這個類股相關的新聞。</p>'}
+  </section>
+  <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>類股內的股票</h2><span class="note">依${hzFull(S.hz)}分數排序</span></div>
+    <div class="list">${rowsHead3("", 0)}${rows.map((r) => stockRow(r, { mode: "three" })).join("")}</div></section>${disclaimer}`;
+  const draw = () => lineChart($("#schart"), SEC.days.slice(-s.spark.length), s.spark, { color: "var(--brass)", fmt: (v) => v.toFixed(1), height: 170 });
+  draw(); onResize(() => location.hash.startsWith("#/sector/") && draw());
+}
+
+// ====================================================================== 國際股市
+async function vGlobal(tok) {
+  const G = await api("global").catch(() => null);
+  if (tok !== routeToken) return;
+  if (!G) { view.innerHTML = `<h1>國際股市</h1><div class="card empty"><h2>國際股市分析準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  const groups = [["美國", "美國股市"], ["歐洲", "歐洲股市"], ["亞洲", "亞洲股市"], ["商品", "原物料"], ["匯率", "匯率"]];
+  const fmtV = (r) => r.unit === "pt" ? r.v.toFixed(2) : r.v >= 1000 ? fmtInt(Math.round(r.v)) : r.v.toFixed(r.v >= 100 ? 1 : 2);
+  const ch = (r, x) => x == null ? "—" : r.unit === "pt" ? `<span class="${cls(x)}">${x > 0 ? "+" : ""}${x.toFixed(2)}</span>` : chgHtml(x, 1);
+  const TR = { "多頭": "p-up1", "空頭": "p-dn1", "反彈中": "p-mid", "回檔中": "p-mid" };
+  view.innerHTML = `<h1 class="grad">國際股市</h1>
+  <p class="lead">台股常跟著國外走。這頁整理主要市場的走勢，以及它們和台股、各類股的連動：美國、歐洲收盤在台股收盤之後，看的是「隔夜」對台股下一個交易日的影響；亞洲市場和台股同時交易，看的是同一天的連動。${G.at ? `資料更新：${esc(G.at)}。` : ""}</p>
+  <section class="card glow"><span class="glow-ring"></span><div class="card-h"><h2>重點</h2></div>
+    ${G.summary.map((l) => `<p class="rline">${esc(l)}</p>`).join("")}
+    ${G.exp ? `<div class="kv" style="margin-top:12px"><div><span>對台股下一個交易日的估算影響</span><b class="${cls(G.exp.exp)}">${G.exp.exp > 0 ? "+" : ""}${(G.exp.exp * 100).toFixed(2)}%</b><span class="note">依${esc(G.exp.name)}估算，只是參考</span></div></div>` : ""}
+  </section>
+  ${groups.map(([rg, title]) => { const rows = G.rows.filter((r) => r.region === rg); if (!rows.length) return ""; return `<section class="card section flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${title}</h2></div>
+    <div class="glist">${rows.map((r) => `<div class="gitem">
+      <div class="gh"><b>${esc(r.name)}</b><span class="pill ${TR[r.trend] || "p-mid"} sm">${r.trend}</span><span class="num gv">${fmtV(r)}${r.unit === "pt" && r.sym === "^TNX" ? "%" : ""}</span>
+        <span class="gc">1 日 ${ch(r, r.c1)}　1 週 ${ch(r, r.c5)}　1 個月 ${ch(r, r.c20)}</span>${spark(r.spark, (r.spark[r.spark.length - 1] ?? 0) >= (r.spark[0] ?? 0))}</div>
+      <p class="gt">${esc(r.text)}${r.overnight ? `<span class="tag" style="margin-left:6px">${dayStr(r.overnight.day)} 收盤已更新</span>` : ""}</p>
+      ${r.sectors && r.sectors.length ? `<p class="note gs">最受影響的類股：${r.sectors.slice(0, 4).map((x) => `<a href="#/sector/${encodeURIComponent(x.ind)}">${esc(x.ind)}</a>`).join("、")}</p>` : ""}
+    </div>`).join("")}</div></section>`; }).join("")}
+  <p class="disclaimer">連動是依過去約 200 個交易日統計，代表「平均來說」的關係，個別日子可能完全不同。估算影響只是參考，不是保證。</p>`;
+}
+
+// ====================================================================== 更多（手機選單）
+function vMenu() {
+  view.innerHTML = `<h1>全部功能</h1><div class="menu-grid">${NAV.map(([h, t, i]) => `<a class="card" href="${h}">${svgI(i)}<b>${t}</b></a>`).join("")}</div>`;
+}
+
 // ====================================================================== 說明
 async function vHelp(tok) {
   let st = S.status || {};
@@ -1147,13 +1313,14 @@ async function vHelp(tok) {
         <li><span><b>新聞消息</b>：最近的新聞和公司公告偏好消息還是壞消息。</span></li>
         <li><span><b>大盤與國外</b>：台股大盤氣氛，以及美股、台積電在美國的股價、匯率、美國利率。</span></li>
       </ul>
+      <p><b>其他頁面：</b>「盤後報告」每天收盤後自動整理大盤、法人、類股、個股、消息和國際股市重點；「類股」把同產業的股票放在一起看趨勢、資金、新聞和國際連動；「國際股市」說明各國股市的走勢和對台股的影響。</p>
       <p><b>它會自己檢討：</b>每天收盤後，拿過去的分數和真正的漲跌對答案。最近常猜錯，就降低「可信度」、把分數調得保守；也會比較幾種計分做法，改用最準的那一種。結果都在「實測對答案」頁。</p>
     </section>
     ${st.static ? `<section class="card"><h2>雲端版（不用開電腦）</h2>
       <p>你現在看的是雲端版，資料每個交易日由雲端自動更新，電腦不用開。</p>
       <p>用手機瀏覽器打開這個網址，在選單點「加到主畫面」，就能像 App 一樣使用。這個網址不會被搜尋引擎收錄，請不要公開分享。</p>
       <h2 style="margin-top:18px">資料何時更新</h2>
-      <p>每個交易日更新兩次：下午 3 點 40 分（收盤價、法人買賣、新聞）和晚上 9 點 50 分（融資融券）。更新完大約 10 分鐘內，網頁就會換成新資料。</p>
+      <p>每個交易日更新三次：下午 3 點 40 分（收盤價、法人買賣、新聞、盤後報告）、晚上 9 點 50 分（融資融券），以及隔天早上 7 點 35 分（美股收盤後，更新國際股市和對台股的影響估算）。更新完大約 10 分鐘內，網頁就會換成新資料。</p>
       <p class="note">雲端版的自選股存在這支手機（或這個瀏覽器）裡，和電腦版的自選不互通。</p>
     </section>` : `<section class="card"><h2>在手機上使用</h2>
       <p>電腦開著台股羅盤時，手機連上<b>同一個 Wi-Fi</b>，用瀏覽器開啟：</p>

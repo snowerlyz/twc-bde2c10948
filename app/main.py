@@ -119,6 +119,18 @@ def analyze(prog=None):
     for r in stocks:
         if r["c"] in dt_scores:
             r["dt"] = dt_scores[r["c"]]
+    # 類股、國際股市、消息影響、盤後報告
+    try:
+        import sector as _sec
+        importlib.reload(_sec)
+        if prog:
+            prog.set(msg="分析類股與國際股市")
+        sec_res, glob_res, report = _sec.build(D, A_all, res, stocks, dt)
+        write_json(os.path.join(RESULTS, "sectors.json"), sec_res)
+        write_json(os.path.join(RESULTS, "global.json"), glob_res)
+        write_json(os.path.join(RESULTS, "report.json"), report)
+    except Exception as e:
+        log("類股／國際分析失敗：%s\n%s" % (e, traceback.format_exc()))
     by_code = {r["c"]: r for r in stocks}
     mkt = res["market"]
 

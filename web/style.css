@@ -497,3 +497,38 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .concl li.no > i { background: var(--surface-3); color: var(--muted); }
 .concl li.warn > i { background: color-mix(in srgb, #ff9f43 22%, transparent); color: #ffb062; }
 .rch .note { white-space: nowrap; }
+/* ---- 盤後報告、類股、國際 ---- */
+.rline { margin: 0 0 8px; line-height: 1.75; color: var(--ink); }
+.rblock h3 { margin: 12px 0 6px; font-size: 14px; color: var(--ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 14px; }
+.chip:hover { border-color: var(--brass); }
+.chip b { font-weight: 600; }
+.heat { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.heat a { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line); text-decoration: none; color: var(--ink); background: var(--surface-2); }
+.heat a b { font-size: 14px; font-weight: 600; }
+.heat a span { font-size: 13px; }
+.stbl td.small { font-size: 13px; }
+.stbl td.txt { min-width: 150px; }
+.glist { display: grid; }
+.gitem { padding: 14px 22px; border-top: 1px solid var(--line); }
+.gh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gh b { font-size: 16px; }
+.gv { font-size: 18px; font-weight: 600; margin-left: 4px; }
+.gc { font-size: 13px; color: var(--ink-2); }
+.gh .spark { margin-left: auto; }
+.gt { margin: 6px 0 0; color: var(--ink-2); line-height: 1.7; }
+.gs { margin: 4px 0 0; }
+.gs a { color: var(--brass); text-decoration: none; }
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.menu-grid a { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 12px; text-decoration: none; color: var(--ink); }
+.menu-grid a svg { width: 28px; height: 28px; color: var(--brass); }
+.checklink .more { white-space: nowrap; color: var(--brass); font-size: 13px; }
+@media (max-width: 860px) {
+  .gitem { padding: 12px 16px; }
+  .gh .spark { display: none; }
+  .heat { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+}
+.seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { white-space: nowrap; flex: none; }
