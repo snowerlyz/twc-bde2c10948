@@ -23,31 +23,31 @@ DT_MIN_PRICE = 10.0
 HALF_LIFE = 30
 SHRINK_DEFAULT = 15.0
 TUNE_PATH = os.path.join(DB, "tuning.json")
-DT_CANDS = [{"hl": hl, "sk": sk, "name": "%s調整・%s" % ({10: "很快", 30: "快", 90: "中等"}[hl], {5: "重視近期實測", 15: "較保守"}[sk])}
+DT_CANDS = [{"hl": hl, "sk": sk, "name": "%s跟著最近表現改（%s）" % ({10: "很快", 30: "較快", 90: "中等速度"}[hl], {5: "改得多", 15: "改得少"}[sk])}
             for hl in (10, 30, 90) for sk in (5, 15)] + \
-           [{"hl": 60, "sk": 60, "name": "以預設為主・小幅依實測調整"},
-            {"hl": 30, "sk": 1e12, "name": "固定預設權重（不依實測調整）"}]
+           [{"hl": 60, "sk": 60, "name": "以固定比重為主，小幅跟著改"},
+            {"hl": 30, "sk": 1e12, "name": "固定比重（不跟著最近表現改）"}]
 TUNE_MARGIN = 0.003
 CAL_WIN = 60
 
 DT_FACTORS = [
-    ("ret1", "今日漲跌", 0.0),
-    ("clv", "收盤位置（越接近當日最高越強）", 0.0),
-    ("range", "今日振幅", 0.0),
-    ("atr10", "近 10 日平均振幅", 0.004),
-    ("gap", "今日開盤跳空", 0.0),
-    ("body", "今日 K 棒實體（收盤減開盤）", 0.0),
-    ("vol1", "今日量能放大", 0.004),
-    ("streak", "連續上漲／下跌天數", 0.0),
-    ("limit", "今日漲停／跌停", 0.0),
-    ("hi20", "接近 20 日高點", 0.0),
-    ("fi1", "外資今日買賣超", 0.004),
-    ("it1", "投信今日買賣超", 0.004),
-    ("dl1", "自營商今日買賣超", 0.0),
-    ("oc5", "近 5 日盤中走勢（開盤到收盤）", 0.0),
+    ("ret1", "今天漲跌", 0.0),
+    ("clv", "收盤接近今天最高價還是最低價", 0.0),
+    ("range", "今天最高最低價差", 0.0),
+    ("atr10", "近 10 天每天平均震盪幅度", 0.004),
+    ("gap", "今天開盤跳高或跳低", 0.0),
+    ("body", "今天收盤比開盤高多少", 0.0),
+    ("vol1", "今天成交量比平常多多少", 0.004),
+    ("streak", "連續漲（跌）幾天", 0.0),
+    ("limit", "今天漲停或跌停", 0.0),
+    ("hi20", "離 20 天內最高價多遠", 0.0),
+    ("fi1", "外資今天買或賣", 0.004),
+    ("it1", "投信今天買或賣", 0.004),
+    ("dl1", "自營商今天買或賣", 0.0),
+    ("oc5", "近 5 天開盤後是走高還是走低", 0.0),
     ("mom5", "近一週漲跌", 0.0),
-    ("ma5gap", "與 5 日線的距離", 0.0),
-    ("rsi6", "6 日 RSI", 0.0),
+    ("ma5gap", "股價比 5 天平均價高多少", 0.0),
+    ("rsi6", "短線強弱（6 日 RSI）", 0.0),
 ]
 DKEYS = [f[0] for f in DT_FACTORS]
 DNAME = {f[0]: f[1] for f in DT_FACTORS}
@@ -197,15 +197,15 @@ def reason(k, v, w):
     if k == "ret1":
         return "今天%s %s" % ("上漲" if v >= 0 else "下跌", pct(v))
     if k == "clv":
-        return "收在今天高點附近" if v > 0.6 else ("收在今天低點附近" if v < -0.6 else "收盤位於今天區間中段")
+        return "收盤接近今天最高價" if v > 0.6 else ("收盤接近今天最低價" if v < -0.6 else "收盤在今天高低價中間")
     if k == "range":
-        return "今天振幅 %s" % pct(v)
+        return "今天最高最低價差 %s" % pct(v)
     if k == "atr10":
-        return "近 10 日平均振幅 %s（%s）" % (pct(v), "波動夠大，有操作空間" if v > 0.04 else "波動偏小")
+        return "近 10 天每天平均上下震盪 %s（%s）" % (pct(v), "波動夠大，有操作空間" if v > 0.04 else "波動偏小")
     if k == "gap":
         return "今天開盤%s %s" % ("跳空上漲" if v > 0 else "跳空下跌", pct(v)) if abs(v) > 0.005 else "今天開盤平盤附近"
     if k == "body":
-        return "今天%s %s" % ("紅 K" if v > 0 else "黑 K", pct(v))
+        return "今天收盤比開盤%s %s" % ("高" if v > 0 else "低", pct(v))
     if k == "vol1":
         return "今天成交量是平常的 %.1f 倍" % math.exp(v)
     if k == "streak":
@@ -216,15 +216,15 @@ def reason(k, v, w):
         return "創 20 日新高" if v > -0.003 else "距 20 日高點 %s" % pct(v)
     if k in ("fi1", "it1", "dl1"):
         who = {"fi1": "外資", "it1": "投信", "dl1": "自營商"}[k]
-        return "%s今天%s（約平日成交量的 %.0f%%）" % (who, "買超" if v > 0 else "賣超", abs(v) * 100)
+        return "%s今天%s（約平常成交量的 %.0f%%）" % (who, "買超" if v > 0 else "賣超", abs(v) * 100)
     if k == "oc5":
-        return "近 5 日盤中平均%s %s" % ("走高" if v > 0 else "走低", pct(v))
+        return "近 5 天開盤後平均%s %s" % ("走高" if v > 0 else "走低", pct(v))
     if k == "mom5":
         return "近一週%s %s" % ("上漲" if v >= 0 else "下跌", pct(v))
     if k == "ma5gap":
-        return "股價%s 5 日線 %s" % ("高於" if v >= 0 else "低於", pct(v))
+        return "股價%s近 5 天平均價 %s" % ("高於" if v >= 0 else "低於", pct(v))
     if k == "rsi6":
-        return "6 日 RSI %.0f" % v
+        return "短線強弱指標 %.0f（%s）" % (v, "漲多" if v >= 70 else "跌深" if v <= 30 else "普通")
     return None
 
 
@@ -272,13 +272,13 @@ def _tune(D, stored, univ_hist, ic_hist):
     if not ok:
         return prev or {"hl": HALF_LIFE, "sk": SHRINK_DEFAULT, "name": "預設"}
     best = max(ok, key=lambda r: r["score"])
-    prev_r = next((r for r in ok if prev and r["name"] == prev.get("name")), None)
+    prev_r = next((r for r in ok if prev and r["hl"] == prev.get("hl") and r["sk"] == prev.get("sk")), None)
     log_ = list(st.get("log", []))
     if prev_r and best["score"] - prev_r["score"] < TUNE_MARGIN:
         chosen = prev_r
     else:
         chosen = best
-        if (not prev or prev.get("name") != best["name"]) and not any(
+        if (not prev or (prev.get("hl"), prev.get("sk")) != (best["hl"], best["sk"])) and not any(
                 x.get("day") == day and x.get("hn") == "dt" and x.get("to") == best["name"] for x in log_):
             log_.append({"day": day, "part": "dt", "hn": "dt", "from": prev.get("name") if prev else None,
                          "to": best["name"], "gain": None if not prev_r else round(best["score"] - prev_r["score"], 4)})

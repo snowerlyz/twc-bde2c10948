@@ -175,14 +175,14 @@ def quality(r):
         s1 = _lin(ratio, [(0.8, 100), (1.1, 85), (1.5, 50), (2.2, 10)])
         s1 = 0.6 * s1 + 0.4 * (r.get("iv_rank", 0.5) * 100)
         if ratio < 1.1:
-            why.append("定價便宜（隱含波動 %.0f%% ≈ 股價實際波動 %.0f%%）" % (r["iv"] * 100, r["hv"] * 100))
+            why.append("價格合理偏便宜（權證價格反映的波動 %.0f%%，跟股票實際波動 %.0f%% 差不多）" % (r["iv"] * 100, r["hv"] * 100))
         elif ratio > 1.6:
-            why.append("定價偏貴（隱含波動比實際波動高 %.0f%%）" % ((ratio - 1) * 100))
+            why.append("價格偏貴（權證價格反映的波動比股票實際波動高 %.0f%%）" % ((ratio - 1) * 100))
     elif r["iv"]:
         s1 = r.get("iv_rank", 0.5) * 100
     else:
         s1 = 30
-        why.append("價格低於內含價值或無法估算，定價資訊不足")
+        why.append("價格資訊不足，無法判斷貴不貴")
     # 2. 買賣價差
     if r["spread"] is None:
         s2 = 15
@@ -190,15 +190,15 @@ def quality(r):
     else:
         s2 = _lin(r["spread"], [(0.01, 100), (0.03, 75), (0.06, 40), (0.12, 0)])
         if r["spread"] > 0.06:
-            why.append("買賣價差大（%.1f%%），進出成本高" % (r["spread"] * 100))
+            why.append("買價賣價差太多（%.1f%%），一買一賣就先虧" % (r["spread"] * 100))
     # 3. 剩餘天數
     s3 = _lin(r["days"], [(15, 0), (45, 50), (90, 90), (150, 100), (360, 90)])
     if r["days"] < 45:
-        why.append("剩 %d 天到期，時間價值流失快" % r["days"])
+        why.append("只剩 %d 天到期，價值會掉得很快" % r["days"])
     # 4. 價內外程度：略價外到價平最有效率
     s4 = _lin(r["money"], [(-0.35, 5), (-0.20, 45), (-0.10, 90), (0.0, 100), (0.10, 85), (0.25, 55)])
     if r["money"] < -0.2:
-        why.append("深度價外 %.0f%%，需要大漲（跌）才有價值" % (-r["money"] * 100))
+        why.append("離履約價還很遠（差 %.0f%%），股價要大漲（跌）才有價值" % (-r["money"] * 100))
     # 5. 每日時間價值損耗
     s5 = _lin(-r["theta"], [(0.003, 100), (0.01, 70), (0.02, 35), (0.04, 0)])
     # 6. 槓桿
@@ -207,18 +207,18 @@ def quality(r):
     if len(why) < 2:
         good = []
         if r["spread"] is not None and r["spread"] <= 0.015:
-            good.append("買賣價差小（%.1f%%）" % (r["spread"] * 100))
+            good.append("買價賣價很接近（只差 %.1f%%）" % (r["spread"] * 100))
         if r["days"] >= 90:
-            good.append("還有 %d 天到期，時間充裕" % r["days"])
+            good.append("還有 %d 天才到期，時間充裕" % r["days"])
         if -0.12 <= r["money"] <= 0.05:
-            good.append("接近價平，反應靈敏")
+            good.append("履約價接近現在股價，跟著股價動得靈敏")
         if 3 <= r["lev"] <= 9:
-            good.append("槓桿 %.1f 倍適中" % r["lev"])
+            good.append("槓桿 %.1f 倍，不會太大或太小" % r["lev"])
         if -r["theta"] <= 0.005:
-            good.append("每日時間損耗低")
+            good.append("每天的時間耗損少")
         why.extend(good[:3 - len(why)])
     if not why:
-        why.append("條件均衡")
+        why.append("各方面條件都還可以")
     return round(q, 1), why
 
 

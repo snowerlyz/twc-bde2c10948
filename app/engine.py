@@ -42,41 +42,41 @@ def fmt_pct(x, d=1):
 # ====================================================================== 因子定義
 # key: (中文名稱, 類別, 預設權重[短, 中, 長])   預設權重以 IC 為單位，學到資料後會逐步取代
 FACTORS = [
-    ("mom5", "近一週漲跌", "技術", (-0.010, 0.000, 0.000)),
-    ("mom20", "近一個月漲跌", "技術", (0.000, 0.010, 0.010)),
-    ("mom60", "近一季漲跌", "技術", (0.010, 0.015, 0.020)),
-    ("mom120", "近半年漲跌", "技術", (0.000, 0.010, 0.020)),
-    ("ma20_gap", "與月線的距離", "技術", (0.005, 0.005, 0.000)),
-    ("ma60_gap", "與季線的距離", "技術", (0.005, 0.010, 0.010)),
-    ("ma_align", "均線排列", "技術", (0.010, 0.010, 0.010)),
-    ("ma20_slope", "月線方向", "技術", (0.010, 0.010, 0.005)),
-    ("rsi14", "RSI 強弱指標", "技術", (-0.005, 0.000, 0.000)),
-    ("kd", "KD 指標", "技術", (-0.005, 0.000, 0.000)),
-    ("macd", "MACD 動能", "技術", (0.005, 0.005, 0.000)),
-    ("bb_pos", "布林通道位置", "技術", (-0.005, 0.000, 0.000)),
-    ("vol_ratio", "成交量變化", "技術", (0.005, 0.000, -0.005)),
-    ("volat20", "股價波動度", "技術", (-0.010, -0.010, -0.015)),
-    ("high52", "距一年高點", "技術", (0.005, 0.010, 0.015)),
-    ("liq", "成交金額規模", "技術", (0.000, 0.000, 0.005)),
-    ("fi5", "外資近一週買賣超", "籌碼", (0.015, 0.010, 0.005)),
-    ("fi20", "外資近一個月買賣超", "籌碼", (0.010, 0.015, 0.010)),
-    ("it5", "投信近一週買賣超", "籌碼", (0.015, 0.015, 0.010)),
-    ("it20", "投信近一個月買賣超", "籌碼", (0.010, 0.015, 0.015)),
-    ("dl5", "自營商近一週買賣超", "籌碼", (0.005, 0.000, 0.000)),
-    ("fi_streak", "外資連續買賣天數", "籌碼", (0.010, 0.005, 0.000)),
-    ("it_streak", "投信連續買賣天數", "籌碼", (0.010, 0.010, 0.005)),
-    ("mb5", "融資近一週增減", "籌碼", (-0.005, -0.005, 0.000)),
-    ("mb20", "融資近一個月增減", "籌碼", (-0.005, -0.010, -0.010)),
-    ("sb_ratio", "券資比", "籌碼", (0.003, 0.000, 0.000)),
-    ("rev_yoy", "月營收年增率", "基本面", (0.005, 0.010, 0.020)),
-    ("rev_cum", "累計營收年增率", "基本面", (0.000, 0.010, 0.020)),
-    ("ey", "本益比（越低越便宜）", "基本面", (0.000, 0.005, 0.015)),
-    ("bpy", "股價淨值比（越低越便宜）", "基本面", (0.000, 0.005, 0.010)),
-    ("yld", "殖利率", "基本面", (0.000, 0.005, 0.010)),
-    ("om", "營業利益率", "基本面", (0.000, 0.005, 0.010)),
-    ("news_sent", "新聞與公告的利多利空", "消息面", (0.010, 0.005, 0.000)),
-    ("news_cnt", "新聞熱度（近 3 天則數）", "消息面", (0.000, 0.000, 0.000)),
-    ("alert", "列為注意股／處置股", "消息面", (-0.005, -0.005, 0.000)),
+    ("mom5", "近一週漲跌", "股價走勢", (-0.010, 0.000, 0.000)),
+    ("mom20", "近一個月漲跌", "股價走勢", (0.000, 0.010, 0.010)),
+    ("mom60", "近三個月漲跌", "股價走勢", (0.010, 0.015, 0.020)),
+    ("mom120", "近半年漲跌", "股價走勢", (0.000, 0.010, 0.020)),
+    ("ma20_gap", "股價比月線（20 天平均價）高多少", "股價走勢", (0.005, 0.005, 0.000)),
+    ("ma60_gap", "股價比季線（60 天平均價）高多少", "股價走勢", (0.005, 0.010, 0.010)),
+    ("ma_align", "均線排列（趨勢方向）", "股價走勢", (0.010, 0.010, 0.010)),
+    ("ma20_slope", "月線往上還是往下", "股價走勢", (0.010, 0.010, 0.005)),
+    ("rsi14", "短線強弱（RSI）", "股價走勢", (-0.005, 0.000, 0.000)),
+    ("kd", "短線高低檔（KD）", "股價走勢", (-0.005, 0.000, 0.000)),
+    ("macd", "上漲動能（MACD）", "股價走勢", (0.005, 0.005, 0.000)),
+    ("bb_pos", "股價在近期波動範圍的位置", "股價走勢", (-0.005, 0.000, 0.000)),
+    ("vol_ratio", "成交量放大或萎縮", "股價走勢", (0.005, 0.000, -0.005)),
+    ("volat20", "股價波動大小", "股價走勢", (-0.010, -0.010, -0.015)),
+    ("high52", "離一年內最高價多遠", "股價走勢", (0.005, 0.010, 0.015)),
+    ("liq", "每天成交金額", "股價走勢", (0.000, 0.000, 0.005)),
+    ("fi5", "外資近一週買或賣", "大戶動向", (0.015, 0.010, 0.005)),
+    ("fi20", "外資近一個月買或賣", "大戶動向", (0.010, 0.015, 0.010)),
+    ("it5", "投信近一週買或賣", "大戶動向", (0.015, 0.015, 0.010)),
+    ("it20", "投信近一個月買或賣", "大戶動向", (0.010, 0.015, 0.015)),
+    ("dl5", "自營商近一週買或賣", "大戶動向", (0.005, 0.000, 0.000)),
+    ("fi_streak", "外資連續買（賣）幾天", "大戶動向", (0.010, 0.005, 0.000)),
+    ("it_streak", "投信連續買（賣）幾天", "大戶動向", (0.010, 0.010, 0.005)),
+    ("mb5", "融資近一週增減（散戶借錢買）", "大戶動向", (-0.005, -0.005, 0.000)),
+    ("mb20", "融資近一個月增減（散戶借錢買）", "大戶動向", (-0.005, -0.010, -0.010)),
+    ("sb_ratio", "券資比（放空÷融資）", "大戶動向", (0.003, 0.000, 0.000)),
+    ("rev_yoy", "上月營收比去年同月", "公司體質", (0.005, 0.010, 0.020)),
+    ("rev_cum", "今年累計營收比去年", "公司體質", (0.000, 0.010, 0.020)),
+    ("ey", "本益比（越低越便宜）", "公司體質", (0.000, 0.005, 0.015)),
+    ("bpy", "股價淨值比（越低越便宜）", "公司體質", (0.000, 0.005, 0.010)),
+    ("yld", "殖利率", "公司體質", (0.000, 0.005, 0.010)),
+    ("om", "本業利潤率", "公司體質", (0.000, 0.005, 0.010)),
+    ("news_sent", "新聞與公告偏好或偏壞", "新聞消息", (0.010, 0.005, 0.000)),
+    ("news_cnt", "新聞多寡（近 3 天）", "新聞消息", (0.000, 0.000, 0.000)),
+    ("alert", "被列為注意股／處置股", "新聞消息", (-0.005, -0.005, 0.000)),
 ]
 FKEYS = [f[0] for f in FACTORS]
 FNAME = {f[0]: f[1] for f in FACTORS}
@@ -393,7 +393,7 @@ def load_news(D):
 GLOBAL_DEF = [
     # 代號, 名稱, 單位說明
     ("^SOX", "費城半導體"), ("^IXIC", "那斯達克"), ("^GSPC", "標普 500"), ("TSM", "台積電 ADR"),
-    ("^VIX", "恐慌指數 VIX"), ("^TNX", "美 10 年債殖利率"), ("TWD=X", "美元兌新台幣"), ("DX-Y.NYB", "美元指數"),
+    ("^VIX", "美股恐慌指數 VIX"), ("^TNX", "美國 10 年債利率"), ("TWD=X", "美元兌新台幣"), ("DX-Y.NYB", "美元指數"),
     ("^N225", "日經 225"), ("CL=F", "西德州原油"),
 ]
 
@@ -850,8 +850,8 @@ def market_model(D, stock_close, stock_fi):
             "rel_corr": None if mc is None else round(mc, 3),
             "similar_n": len(near), "similar_up": up,
             "similar_avg": round(sum(r for _, r in near) / len(near) * 100, 2) if near else None,
-            "pos": [MKT_NAME[k] for c_, k in contrib[:3] if c_ > 0.05],
-            "neg": [MKT_NAME[k] for c_, k in contrib[::-1][:3] if c_ < -0.05],
+            "pos": [mkt_reason(k, raw[k][last]) for c_, k in contrib[:3] if c_ > 0.05],
+            "neg": [mkt_reason(k, raw[k][last]) for c_, k in contrib[::-1][:3] if c_ < -0.05],
             "weights": {k: round(w, 4) for k, w in weights.items()},
         }
         # ---- 實測：每天當時算出的大盤分數 vs 之後真正的漲跌（前 40 天暖機不計）
@@ -953,6 +953,59 @@ def stock_news(D, code):
 MKT_NAME = {k: n for k, n, _ in MKT_FACTORS}
 
 
+def mkt_reason(k, v):
+    """大盤指標的白話說明（說「現在怎樣」，不只是指標名稱）。"""
+    if v is None or isnan(v):
+        return MKT_NAME.get(k, k)
+    pct = lambda x: "%.1f%%" % abs(x * 100)
+    ud = lambda x: "漲" if x >= 0 else "跌"
+    if k == "m_mom5":
+        return "加權指數近一週%s %s" % (ud(v), pct(v))
+    if k == "m_mom20":
+        return "加權指數近一個月%s %s" % (ud(v), pct(v))
+    if k == "m_ma20":
+        return "指數%s月線 %s" % ("高於" if v >= 0 else "低於", pct(v))
+    if k == "m_ma60":
+        return "指數%s季線 %s" % ("高於" if v >= 0 else "低於", pct(v))
+    if k == "m_breadth":
+        return "近 5 天平均有 %.0f%% 的股票上漲" % (v * 100)
+    if k == "m_fi5":
+        return "外資近 5 天%s台股" % ("買進" if v >= 0 else "賣出")
+    if k == "m_marg5":
+        return "融資近 5 天%s %s（散戶借錢買股%s）" % ("增加" if v >= 0 else "減少", pct(v), "變多" if v >= 0 else "變少")
+    if k == "m_basis":
+        return "台指期比現貨%s %s（市場%s）" % ("高" if v >= 0 else "低", pct(v), "偏樂觀" if v >= 0 else "偏保守")
+    if k == "m_foi":
+        return "外資在期貨上押%s %s 口" % ("漲" if v >= 0 else "跌", format(int(abs(v)), ","))
+    if k == "m_foi5":
+        return "外資近 5 天在期貨上加碼押%s" % ("漲" if v >= 0 else "跌")
+    if k == "m_pc":
+        return "選擇權看跌／看漲比 %.0f%%" % v
+    if k == "g_sox5":
+        return "美國半導體股近一週%s %s" % (ud(v), pct(v))
+    if k == "g_sox20":
+        return "美國半導體股近一個月%s %s" % (ud(v), pct(v))
+    if k == "g_ndx5":
+        return "那斯達克近一週%s %s" % (ud(v), pct(v))
+    if k == "g_spx60":
+        return "美股標普 500 %s季線 %s" % ("高於" if v >= 0 else "低於", pct(v))
+    if k == "g_adr":
+        return "台積電在美國的股價比台股%s %s" % ("貴" if v >= 0 else "便宜", pct(v))
+    if k == "g_vix":
+        return "美股恐慌指數 %.1f（%s）" % (v, "偏高，市場緊張" if v >= 22 else "偏低，市場平靜" if v <= 16 else "普通")
+    if k == "g_vix5":
+        return "美股恐慌指數近一週%s %.1f 點" % ("上升" if v >= 0 else "下降", abs(v))
+    if k == "g_tnx20":
+        return "美國 10 年債利率近一個月%s %.2f 個百分點" % ("上升" if v >= 0 else "下降", abs(v))
+    if k == "g_twd20":
+        return "新台幣近一個月%s %s" % ("貶值" if v >= 0 else "升值", pct(v))
+    if k == "g_dxy20":
+        return "美元近一個月%s %s" % ("走強" if v >= 0 else "走弱", pct(v))
+    if k == "m_news":
+        return "近兩天財經新聞%s" % ("偏樂觀" if v > 0.03 else "偏悲觀" if v < -0.03 else "多空互見")
+    return MKT_NAME.get(k, k)
+
+
 def _r(xs, d):
     return [None if (x is None or isnan(x)) else round(x, d) for x in xs]
 
@@ -984,38 +1037,38 @@ def reason_text(k, v, sign):
         return "股價%s季線 %.1f%%" % ("高於" if v >= 0 else "低於", abs(v) * 100)
     if k == "ma_align":
         if v >= 3:
-            return "均線多頭排列（短中長期均線由上而下依序排開）"
+            return "均線多頭排列（短期、中期、長期平均價一路向上，趨勢偏多）"
         if v <= -3:
-            return "均線空頭排列"
-        return "均線糾結、方向不明" if abs(v) <= 1 else ("均線偏多" if v > 0 else "均線偏空")
+            return "均線空頭排列（短期、中期、長期平均價一路向下，趨勢偏空）"
+        return "各期間平均價糾結，方向不明" if abs(v) <= 1 else ("均線偏多（近期價格高於過去平均）" if v > 0 else "均線偏空（近期價格低於過去平均）")
     if k == "ma20_slope":
         return "月線%s" % ("向上" if v > 0 else "向下")
     if k == "rsi14":
         if v >= 70:
-            return "RSI %.0f，短線偏熱" % v
+            return "短線漲多（RSI %.0f），可能拉回" % v
         if v <= 30:
-            return "RSI %.0f，短線超賣" % v
-        return "RSI %.0f" % v
+            return "短線跌深（RSI %.0f），可能反彈" % v
+        return "RSI 指標 %.0f" % v
     if k == "kd":
         if v >= 80:
-            return "KD %.0f，位在高檔" % v
+            return "短線位在高檔（KD %.0f）" % v
         if v <= 20:
-            return "KD %.0f，位在低檔" % v
-        return "KD %.0f" % v
+            return "短線位在低檔（KD %.0f）" % v
+        return "KD 指標 %.0f" % v
     if k == "macd":
-        return "MACD 動能%s" % ("轉強" if v > 0 else "轉弱")
+        return "上漲動能%s（MACD）" % ("轉強" if v > 0 else "轉弱")
     if k == "bb_pos":
         if v > 0.9:
-            return "股價貼近布林通道上緣"
+            return "股價來到近期正常波動範圍的上緣"
         if v < -0.9:
-            return "股價貼近布林通道下緣"
-        return "股價位於布林通道%s半部" % ("上" if v > 0 else "下")
+            return "股價來到近期正常波動範圍的下緣"
+        return "股價在近期波動範圍的%s半部" % ("上" if v > 0 else "下")
     if k == "vol_ratio":
         return "成交量較平常%s %.0f%%" % ("放大" if v > 0 else "萎縮", abs(math.exp(v) - 1) * 100)
     if k == "volat20":
         return "近一個月每日波動約 %.1f%%（%s）" % (v * 100, "偏大" if v > 0.03 else "穩定")
     if k == "high52":
-        return "距離一年高點 %.1f%%" % (v * 100) if v < -0.005 else "創一年新高"
+        return "比一年內最高價低 %.1f%%" % (-v * 100) if v < -0.005 else "創一年新高"
     if k == "liq":
         return "日均成交約 %.1f 億元" % (10 ** v / 1e8)
     if k in ("fi5", "fi20", "it5", "it20", "dl5"):
@@ -1031,9 +1084,9 @@ def reason_text(k, v, sign):
         return "%s連續 %d 天%s" % (who, abs(v), "買超" if v > 0 else "賣超")
     if k in ("mb5", "mb20"):
         per = "近一週" if k == "mb5" else "近一個月"
-        return "融資%s%s（散戶槓桿%s）" % (per, "增加" if v > 0 else "減少", "升溫" if v > 0 else "降溫")
+        return "融資%s%s（散戶借錢買股%s）" % (per, "增加" if v > 0 else "減少", "變多" if v > 0 else "變少")
     if k == "sb_ratio":
-        return "券資比 %.1f%%" % (v * 100)
+        return "券資比 %.1f%%（放空的量÷借錢買的量）" % (v * 100)
     if k == "rev_yoy":
         return "最新月營收年%s %.1f%%" % ("增" if v >= 0 else "減", abs(v))
     if k == "rev_cum":
@@ -1197,13 +1250,43 @@ def run_engine(prog=None):
 # ====================================================================== 自動調校
 
 TUNE_PATH = os.path.join(DB, "tuning.json")
-HL_LABEL = {30: "很快", 60: "快", 120: "中等", 240: "慢"}
-SK_LABEL = {10: "重視近期實測", 30: "較保守"}
-TUNE_CANDS = [{"hl": hl, "sk": sk, "name": "%s調整・%s" % (HL_LABEL[hl], SK_LABEL[sk])}
+HL_LABEL = {30: "很快", 60: "較快", 120: "中等速度", 240: "慢慢"}
+SK_LABEL = {10: "改得多", 30: "改得少"}
+TUNE_CANDS = [{"hl": hl, "sk": sk, "name": "%s跟著最近表現改（%s）" % (HL_LABEL[hl], SK_LABEL[sk])}
               for hl in (30, 60, 120, 240) for sk in (10, 30)] + \
-             [{"hl": 120, "sk": 100, "name": "以預設為主・小幅依實測調整"},
-              {"hl": 240, "sk": 400, "name": "以預設為主・微調"},
-              {"hl": 60, "sk": 1e12, "name": "固定預設權重（不依實測調整）"}]
+             [{"hl": 120, "sk": 100, "name": "以固定比重為主，小幅跟著改"},
+              {"hl": 240, "sk": 400, "name": "以固定比重為主，只做微調"},
+              {"hl": 60, "sk": 1e12, "name": "固定比重（不跟著最近表現改）"}]
+
+
+def _cand_name(hl, sk, cands):
+    for c in cands:
+        if c["hl"] == hl and abs(c["sk"] - sk) < 1e-6 * max(1.0, sk):
+            return c["name"]
+    return None
+
+
+def migrate_names(st):
+    """舊版的設定名稱換成新的白話名稱。"""
+    OLD = {"固定預設權重（不依實測調整）": "固定比重（不跟著最近表現改）",
+           "以預設為主・小幅依實測調整": "以固定比重為主，小幅跟著改", "以預設為主・微調": "以固定比重為主，只做微調"}
+    for a, b in (("很快", "很快"), ("快", "較快"), ("中等", "中等速度"), ("慢", "慢慢")):
+        for c, d in (("重視近期實測", "改得多"), ("較保守", "改得少")):
+            OLD["%s調整・%s" % (a, c)] = "%s跟著最近表現改（%s）" % (b, d)
+    for x in st.get("log", []):
+        for k in ("from", "to"):
+            if x.get(k) in OLD:
+                x[k] = OLD[x[k]]
+    for x in st.get("history", []):
+        if x.get("name") in OLD:
+            x["name"] = OLD[x["name"]]
+    for part in ("main",):
+        for hn, c in (st.get(part) or {}).items():
+            if isinstance(c, dict) and c.get("name") in OLD:
+                c["name"] = OLD[c["name"]]
+    if isinstance(st.get("dt"), dict) and st["dt"].get("name") in OLD:
+        st["dt"]["name"] = OLD[st["dt"]["name"]]
+    return st
 TUNE_EVAL_HL = 60       # 評分時，越近的日子越重要（半衰期 60 個交易日）
 TUNE_MARGIN = 0.003     # 新設定要明顯比較好（IC 高 0.003 以上）才換，避免每天換來換去
 
@@ -1223,7 +1306,7 @@ def _ew_mean(pairs, last_t, hl):
 def tune_main(D, store, fstore, ic_hist, step=3):
     """比較不同的權重調整速度：每種設定都用「當時已知的資料」逐日打分數，
     再看分數和之後實際報酬的相關性（IC），挑最準的。結果與換設定紀錄存在 tuning.json。"""
-    st = read_json(TUNE_PATH, {}) or {}
+    st = migrate_names(read_json(TUNE_PATH, {}) or {})
     cur = st.get("main") or {}
     day = D.days[-1]
     cfg, table = {}, {}
@@ -1266,12 +1349,12 @@ def tune_main(D, store, fstore, ic_hist, step=3):
             continue
         best = max(ok, key=lambda r: r["score"])
         prev = cur.get(hn)
-        prev_r = next((r for r in ok if prev and r["name"] == prev.get("name")), None)
+        prev_r = next((r for r in ok if prev and r["hl"] == prev.get("hl") and r["sk"] == prev.get("sk")), None)
         if prev_r and best["score"] - prev_r["score"] < TUNE_MARGIN:
             chosen = prev_r
         else:
             chosen = best
-            if (not prev or prev.get("name") != best["name"]) and not any(
+            if (not prev or (prev.get("hl"), prev.get("sk")) != (best["hl"], best["sk"])) and not any(
                     x.get("day") == day and x.get("hn") == hn and x.get("to") == best["name"] for x in log_):
                 log_.append({"day": day, "part": "main", "hn": hn, "from": prev.get("name") if prev else None,
                              "to": best["name"], "gain": None if not prev_r else round(best["score"] - prev_r["score"], 4)})

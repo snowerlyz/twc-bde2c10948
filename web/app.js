@@ -13,9 +13,9 @@ const hzTag = (i) => `${HZ_NAME[i]}<small class="hzt">${HZ_SHORT[i]}</small>`;
 const hzFull = (i) => `${HZ_NAME[i]}（${HZ_SHORT[i]}）`;
 function relInfo(r) {
   if (r == null) return { t: "—", c: "p-mid" };
-  if (r >= 0.7) return { t: "高", c: "p-up1" };
+  if (r >= 0.7) return { t: "高", c: "p-good" };
   if (r >= 0.4) return { t: "中", c: "p-mid" };
-  return { t: "低", c: "p-dn1" };
+  return { t: "低", c: "p-bad" };
 }
 const HZ_DAYS = ["一週", "一個月", "三個月"];
 const store = {
@@ -68,29 +68,29 @@ function sbar(s) {
 
 // 名詞解釋
 const GLOSS = {
-  score: "0～100 分，50 為中立。由約 35 個技術、籌碼、基本面、消息面指標加權而成，權重每天依「這些指標過去實際預測得準不準」自動調整，並納入大盤氣氛（含美股、匯率等國際市場）。75 分以上為強烈看多、25 分以下為強烈看空。短期＝約 1 週（5 個交易日）、中期＝約 1 個月（20 個交易日）、長期＝約 3 個月（60 個交易日）。",
-  rel: "可信度：模型每天事後對答案，看最近一段時間分數高低和之後實際漲跌是否一致。可信度低代表最近不準，分數會自動往 50 收斂，避免給出過度自信的判斷；等模型重新變準，可信度會自動回升。",
-  tune: "自動優化：模型的「權重調整方式」（依過去實測結果改變各指標權重的快慢）不是寫死的。每天收盤後會把幾種方式都重跑一次歷史，比較哪一種的分數和實際漲跌最一致，自動採用最準的。",
-  news: "消息面：收集鉅亨網、Yahoo 股市的財經新聞與公開資訊觀測站重大訊息，用利多／利空關鍵字判斷每則消息偏多或偏空，再彙總到個股與大盤。關鍵字判斷是粗略的，請點開原文自行確認。",
-  glob: "國際市場：台股常跟著美股（特別是費城半導體）、台積電 ADR、美元與新台幣匯率、美債殖利率連動。這些數字已納入大盤分數，權重同樣由歷史資料檢驗後自動調整。美股數字為前一個美國交易日收盤。",
-  upprob: "過去一段時間裡，分數落在同一區間的股票，在這段期間後實際上漲的比例。這是歷史統計，不是保證。",
-  range: "同一分數區間的股票，過去實際報酬的中間 60%（第 20 到第 80 百分位）。",
-  rec: "推薦度：綜合權證本身品質（價格是否合理、買賣價差、剩餘天數、價內外、時間價值損耗、槓桿）與標的股票的看多／看空分數。",
-  quality: "權證品質分數（0～100）：只看權證條件好不好，不管標的漲跌。",
-  money: "價內外程度。正數是價內（已有履約價值），負數是價外。略為價外到價平通常最有效率。",
-  lev: "實質槓桿：標的股票漲 1%，權證大約漲幾 %。",
-  iv: "隱含波動率：權證價格反推出的波動率。和股票實際的歷史波動率相比，越接近或越低代表定價越便宜。",
-  spread: "買賣價差：委買與委賣價的差距占價格的比例。越小越好，太大代表一買一賣就先虧在價差上。",
-  theta: "每天光是時間經過，權證價值大約流失的比例（其他條件不變時）。",
-  days: "距離最後交易日還有幾天。少於 45 天時間價值流失很快。",
-  basis: "期貨價格減現貨（加權指數）。正價差代表市場對後市較樂觀，逆價差較保守；接近結算日會趨近於零。",
-  foi: "外資在台指期的多空淨留倉口數。正數為淨多單，負數為淨空單；變化方向比絕對數字更值得注意。",
-  pc: "選擇權賣權未平倉量 ÷ 買權未平倉量。台灣市場上比值偏高時常被解讀為支撐較強。",
-  dtscore: "當沖分數（0～100）：依今天收盤後的短線因子排名，分數越高代表下一個交易日開盤買進、收盤賣出的勝算越高；越低則越適合先賣後買。權重每天依前一天的實際結果自動調整。",
-  dtwin: "勝算＝扣成本後的勝率：過去 60 個交易日裡，條件相近的股票隔天照這個方向當沖（開盤進、收盤出），扣掉來回成本後真的賺錢的比例。超過 50% 且平均報酬為正才算有優勢。",
-  dttp: "同分數區間的股票，隔天盤中從開盤算起的最大有利幅度（中位數），可當停利參考。",
-  dtsl: "同分數區間的股票，隔天盤中從開盤算起的最大不利幅度（中位數），可當停損參考。",
-  oi: "未平倉量：市場上還沒平倉的契約口數。價漲量增代表新資金進場。",
+  score: "分數 0～100，50 分代表看不出方向；越高越可能漲，越低越可能跌。75 分以上＝強烈看多，25 分以下＝強烈看空。分數綜合約 35 項指標：股價走勢、法人買賣、公司營收獲利、新聞消息，再加上大盤與美股等國際行情。短期看 1 週、中期看 1 個月、長期看 3 個月。",
+  rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，分數也會自動往 50 靠攏，不給太肯定的判斷。等它重新變準，可信度會自己回升。",
+  tune: "模型每天收盤後會自我檢討：試好幾種做法（例如各項指標的比重要不要、要多快跟著最近表現調整），用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種。",
+  news: "收集鉅亨網、Yahoo 股市的財經新聞，和公司在公開資訊觀測站發布的重大訊息，依標題用字判斷偏好消息（利多）還是壞消息（利空）。這是用關鍵字粗略判斷，可能看錯，重要消息請點開原文確認。",
+  glob: "台股常跟著國外走：美國股市（特別是半導體類股）、台積電在美國的股價、美元匯率、美國利率。這些已經算進大盤分數。美股是前一晚的收盤價。",
+  upprob: "過去分數跟它差不多的股票，在這段期間後真的上漲的比例。是過去的統計，不是保證。",
+  range: "過去分數差不多的股票，大部分（中間 6 成）的實際漲跌落在這個範圍。",
+  rec: "推薦度：權證本身划不划算（價格、買賣價差、剩幾天到期、每天耗損多少、槓桿大小），加上股票本身看漲還是看跌，綜合打分。",
+  quality: "權證條件分數（0～100）：只看這檔權證本身划不划算，不管股票會漲會跌。",
+  money: "價內外：正數＝現在就有價值（價內），負數＝股價還要再漲（或跌）一段才有價值（價外）。稍微價外到剛好價平，通常最划算。",
+  lev: "槓桿：股票漲 1%，這檔權證大約漲幾 %。",
+  iv: "權證價格反推出的「預期波動」。跟股票實際的波動相比，越接近或越低，代表權證賣得越便宜。",
+  spread: "買價和賣價差多少。越小越好；差太多，代表一買一賣就先虧在價差上。",
+  theta: "什麼都沒變的情況下，權證每天光是時間經過就會少掉的價值。",
+  days: "距離最後交易日還有幾天。少於 45 天時，權證價值掉得很快。",
+  basis: "期貨價格減掉現貨（加權指數）。期貨比現貨高（正價差）通常代表市場比較樂觀，低（逆價差）比較保守；快到結算日時會趨近於零。",
+  foi: "外資在台指期押多還是押空的淨口數。正數＝押漲，負數＝押跌；最近的變化方向比數字大小更重要。",
+  pc: "選擇權裡「賭跌」的部位 ÷「賭漲」的部位。在台灣，這個比值偏高時，常被解讀為下方支撐較強。",
+  dtscore: "當沖分數：依今天收盤後的資料，估計下一個交易日「開盤買、收盤賣」能賺錢的機會。",
+  dtwin: "勝算＝扣掉手續費和稅之後，真的賺錢的機會。依過去 60 個交易日、條件差不多的股票隔天實際結果估算。超過 50% 而且平均是賺的，才算有優勢。",
+  dttp: "過去條件差不多的股票，隔天從開盤算起通常最多漲（跌）到哪裡，可以當停利參考。",
+  dtsl: "過去條件差不多的股票，隔天從開盤算起通常最多反向走到哪裡，可以當停損參考。",
+  oi: "未平倉：市場上還沒了結的期貨口數。價格上漲、未平倉也增加，代表有新資金進場。",
 };
 function help(k) { return `<button class="help" type="button" data-help="${k}" aria-label="說明">?</button>`; }
 document.addEventListener("click", (e) => {
@@ -128,7 +128,7 @@ const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor
 
 const NAV = [
   ["#/", "總覽", "home"], ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
-  ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/check", "實測對答案", "target"], ["#/model", "模型權重", "model"], ["#/help", "使用說明", "help"],
+  ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/check", "實測對答案", "target"], ["#/model", "分數怎麼算", "model"], ["#/help", "使用說明", "help"],
 ];
 $("#nav").innerHTML = NAV.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
 $("#tabbar").innerHTML = NAV.slice(0, 6).map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
@@ -478,13 +478,13 @@ async function route() {
     else await vHome(tok);
   } catch (e) {
     console.error(e);
-    if (tok === routeToken) view.innerHTML = `<div class="card empty"><h2>這一頁暫時無法顯示</h2><p>${esc(e.message === "notfound" ? "找不到這檔的分析資料，可能是新上市、下市，或成交太少。" : "讀取資料時發生問題：" + e.message)}</p><a class="btn" href="#/">回到總覽</a></div>`;
+    if (tok === routeToken) view.innerHTML = `<div class="card empty"><h2>這一頁暫時無法顯示</h2><p>${esc(e.message === "notfound" ? "找不到這檔股票的分析，可能是剛上市、已下市，或平常幾乎沒人買賣。" : "讀取資料時發生問題：" + e.message)}</p><a class="btn" href="#/">回到總覽</a></div>`;
   }
   if (tok === routeToken) { FX.enhance(view); if (!location.hash.startsWith("#/stock/")) scrollTo(0, 0); }
 }
 addEventListener("hashchange", route);
 
-const disclaimer = `<p class="disclaimer">本工具依證交所、櫃買中心、期交所公開資料自動計算，分數與機率是歷史統計，不保證未來結果，也不構成投資建議。投資前請自行判斷並控制風險。</p>`;
+const disclaimer = `<p class="disclaimer">本工具用證交所、櫃買中心、期交所的公開資料自動計算。分數和機率是根據過去的統計，不保證未來一定如此，也不是投資建議；買賣前請自己判斷，並控制好風險。</p>`;
 
 // ====================================================================== 總覽
 async function vHome(tok) {
@@ -493,11 +493,11 @@ async function vHome(tok) {
   const top = [...liquid].sort((a, b) => b.s[S.hz] - a.s[S.hz]).slice(0, 10);
   const bot = [...liquid].sort((a, b) => a.s[S.hz] - b.s[S.hz]).slice(0, 10);
   const facts = [];
-  if (M.up != null) facts.push(`今天上市股票上漲 ${M.up} 家、下跌 ${M.down} 家`);
-  if (M.foi != null) facts.push(`外資台指期${M.foi >= 0 ? "淨多單" : "淨空單"} ${fmtInt(Math.abs(M.foi))} 口${M.foi5 != null ? `，5 天來${M.foi5 >= 0 ? "偏多增加" : "偏空增加"} ${fmtInt(Math.abs(M.foi5))} 口` : ""}`);
-  if (mh.pos.length) facts.push(`加分：${mh.pos.join("、")}`);
-  if (mh.neg.length) facts.push(`扣分：${mh.neg.join("、")}`);
-  if (mh.similar_n) facts.push(`過去 ${mh.similar_n} 次類似情況，${HZ_DAYS[S.hz]}後大盤上漲 ${mh.similar_up} 次（平均 ${mh.similar_avg > 0 ? "+" : ""}${mh.similar_avg}%）`);
+  if (M.up != null) facts.push(`今天上市股票 ${M.up} 家上漲、${M.down} 家下跌`);
+  if (M.foi != null) facts.push(`外資在期貨上押${M.foi >= 0 ? "漲" : "跌"} ${fmtInt(Math.abs(M.foi))} 口${M.foi5 != null ? `，近 5 天又加碼押${M.foi5 >= 0 ? "漲" : "跌"} ${fmtInt(Math.abs(M.foi5))} 口` : ""}`);
+  if (mh.pos.length) facts.push(`有利大盤：${mh.pos.join("、")}`);
+  if (mh.neg.length) facts.push(`不利大盤：${mh.neg.join("、")}`);
+  if (mh.similar_n) facts.push(`過去一年出現過 ${mh.similar_n} 次類似的盤勢，${HZ_DAYS[S.hz]}後大盤有 ${mh.similar_up} 次上漲，平均${mh.similar_avg >= 0 ? "漲" : "跌"} ${Math.abs(mh.similar_avg).toFixed(1)}%`);
   const mod = L.model[hz];
   const ind = L.industries || [];
   const w = S.watch.map((c) => S.byCode[c]).filter(Boolean).slice(0, 6);
@@ -506,7 +506,7 @@ async function vHome(tok) {
   if (tok !== routeToken) return;
   view.innerHTML = `
   <h1 class="grad">今天的台股氣氛</h1>
-  <p class="lead">${dayFull(L.day)} 收盤資料・${HZ_NAME[S.hz]}（${HZ_SPAN[S.hz]}）觀點。上方可切換短期（1 週）、中期（1 個月）、長期（3 個月）。</p>
+  <p class="lead">依 ${dayFull(L.day)} 收盤資料，判斷未來 ${HZ_SHORT[S.hz]}（約 ${[5, 20, 60][S.hz]} 個交易日）的方向。想看其他期間，按上方的「短期 1 週」「中期 1 個月」「長期 3 個月」切換。</p>
   <section class="card hero glow"><span class="glow-ring"></span>
     <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div>${mh.rel != null ? `<a class="relnote" href="#/check">可信度 <span class="pill ${relInfo(mh.rel).c}">${relInfo(mh.rel).t}</span></a>${help("rel")}` : ""}</div>
     <div class="hero-side">
@@ -517,19 +517,19 @@ async function vHome(tok) {
   </section>
   ${M.global && M.global.rows && M.global.rows.length || M.news ? `<div class="grid g2 section">${globalCard(M.global)}${newsCard(M.news)}</div>` : ""}
   <div class="grid g2 section">
-    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${hzFull(S.hz)}看多前 10 名</h2>${help("score")}<a class="more" href="#/stocks">看全部股票</a></div><div class="list">${top.map((r) => stockRow(r)).join("")}</div></section>
-    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${hzFull(S.hz)}看空前 10 名</h2><a class="more" href="#/stocks?asc">看全部股票</a></div><div class="list">${bot.map((r) => stockRow(r)).join("")}</div></section>
+    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>未來 ${HZ_SHORT[S.hz]}最看好的 10 檔</h2>${help("score")}<a class="more" href="#/stocks">看全部股票</a></div><div class="list">${top.map((r) => stockRow(r)).join("")}</div></section>
+    <section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>未來 ${HZ_SHORT[S.hz]}最不看好的 10 檔</h2><a class="more" href="#/stocks?asc">看全部股票</a></div><div class="list">${bot.map((r) => stockRow(r)).join("")}</div></section>
   </div>
   <div class="grid g2 section">
-    <section class="card"><div class="card-h"><h2>產業強弱</h2><span class="note">各產業個股的平均${hzFull(S.hz)}分數</span></div>
+    <section class="card"><div class="card-h"><h2>哪些產業比較強</h2><span class="note">產業內股票的平均分數（未來 ${HZ_SHORT[S.hz]}）</span></div>
       <div class="bars" id="indbars">${indBars(ind, 12)}</div>
       ${ind.length > 12 ? `<button class="btn" style="margin-top:12px" id="indall">顯示全部 ${ind.length} 個產業</button>` : ""}</section>
-    <section class="card"><a class="checklink" href="#/check">${svgI("target")}<span><b>分數準不準？</b><span class="note">看「實測對答案」：每天把分數和之後的實際漲跌比對，並自動優化模型</span></span><span class="pill ${relInfo(mod && mod.rel).c} sm">可信度 ${relInfo(mod && mod.rel).t}</span></a>
+    <section class="card"><a class="checklink" href="#/check">${svgI("target")}<span><b>分數準不準？</b><span class="note">每天拿以前的分數和真正的漲跌對答案，模型也會依結果自我調整</span></span><span class="pill ${relInfo(mod && mod.rel).c} sm">可信度 ${relInfo(mod && mod.rel).t}</span></a>
       <div class="card-h" style="margin-top:18px"><h2>今日權證精選</h2>${help("rec")}<a class="more" href="#/warrants">看更多</a></div>
       ${picks.length ? `<div class="list" style="margin:0 -22px">${picks.map((p) => `<a class="row" href="#/warrants/${p.u}"><div class="nm"><b>${esc(p.n)}</b><span>${p.c}・標的 ${esc(p.un)}・${p.t === "C" ? "認購" : "認售"}</span></div><div class="px">${fmtPx(p.P)}</div><div class="ch"><span class="q ${p.rec >= 70 ? "hi" : "md"}">${Math.round(p.rec)}</span></div><div class="sb small muted">${esc(p.why[0] || "")}</div></a>`).join("")}</div>` : '<p class="note">權證資料準備中。</p>'}
     </section>
   </div>
-  <p class="note section" style="text-align:center"><a href="#/check" style="color:var(--brass)">實測對答案</a>　·　<a href="#/model" style="color:var(--brass)">模型權重</a>　·　<a href="#/help" style="color:var(--brass)">使用說明</a></p>
+  <p class="note section" style="text-align:center"><a href="#/check" style="color:var(--brass)">實測對答案</a>　·　<a href="#/model" style="color:var(--brass)">分數怎麼算</a>　·　<a href="#/help" style="color:var(--brass)">使用說明</a></p>
   ${w.length ? `<section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>我的自選</h2><a class="more" href="#/watch">管理自選</a></div><div class="list">${rowsHead3("", 0)}${w.map((r) => stockRow(r, { mode: "three" })).join("")}</div></section>` : ""}
   ${disclaimer}`;
   $$("[data-hz2]").forEach((b) => b.addEventListener("click", () => setHz(+b.dataset.hz2)));
@@ -550,13 +550,13 @@ async function vStocks(tok) {
   if (location.hash.includes("asc")) { stockState.sort = "s"; stockState.dir = 1; history.replaceState(null, "", "#/stocks"); }
   const L = S.latest;
   const inds = [...new Set(L.stocks.map((r) => r.ind).filter(Boolean))].sort();
-  view.innerHTML = `<h1>選股</h1><p class="lead">所有上市櫃股票與 ETF 的短期（1 週）、中期（1 個月）、長期（3 個月）分數。點欄位名稱可以排序，點星號加入自選。</p>
+  view.innerHTML = `<h1>選股</h1><p class="lead">所有上市櫃股票與 ETF 的分數：短期看未來 1 週、中期看 1 個月、長期看 3 個月。點欄位名稱可以排序，點星號可以加入自選。</p>
     <div class="filters">
       <input type="text" id="fq" placeholder="篩選名稱或代號" value="${esc(stockState.q)}" aria-label="篩選">
       <select id="fmk" aria-label="市場"><option value="">上市＋上櫃</option><option>上市</option><option>上櫃</option></select>
       <select id="ftype" aria-label="類型"><option value="stock">只看股票</option><option value="etf">只看 ETF</option><option value="all">股票＋ETF</option></select>
       <select id="find" aria-label="產業"><option value="">全部產業</option>${inds.map((i) => `<option>${esc(i)}</option>`).join("")}</select>
-      <select id="fval" aria-label="成交金額"><option value="0">成交金額不限</option><option value="0.1">日均成交 1000 萬以上</option><option value="1">日均成交 1 億以上</option><option value="5">日均成交 5 億以上</option></select>
+      <select id="fval" aria-label="成交金額"><option value="0">不限成交量</option><option value="0.1">每天成交 1000 萬以上</option><option value="1">每天成交 1 億以上</option><option value="5">每天成交 5 億以上</option></select>
     </div>
     <section class="card flush"><div class="list" id="slist"></div></section>${disclaimer}`;
   $("#fmk").value = stockState.mk; $("#ftype").value = stockState.type; $("#find").value = stockState.ind; $("#fval").value = String(stockState.minval);
@@ -613,7 +613,7 @@ async function vStock(tok, code) {
       ${d.news && d.news.disp ? `<span class="tag alert2" title="${esc(d.news.disp)}">處置股</span>` : d.news && d.news.warn ? `<span class="tag alert1" title="${esc(d.news.warn)}">注意股</span>` : ""}</div></div>
     <div class="px" data-count="${last[4]}" data-dec="${last[4] >= 1000 ? 0 : last[4] >= 100 ? 1 : 2}">${fmtPx(last[4])}</div><div class="chg">${chgHtml(chg)}</div>
     <div class="shb">${starBtn(code).replace('class="star', 'class="btn star').replace("</button>", "<span>自選</span></button>")}
-      ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣成本後的勝率">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
+      ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣掉手續費和稅後賺錢的機會">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
       ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}</div>
   </div>
   <div class="grid g3">
@@ -621,43 +621,43 @@ async function vStock(tok, code) {
       <div class="card-h" style="margin:0"><h2>${HZ_NAME[i]}</h2><span class="note">${HZ_SPAN[i]}</span>${i === 0 ? help("score") : ""}</div>
       <div class="hzbody"><div class="hzd">${dial(h ? h.score : null, { animate: i === S.hz })}
       <div class="hzl">${h ? h.label : "資料不足"}</div></div><div class="hzs">
-      ${h && h.up != null ? `<div class="stat">上漲機率 <b>${(h.up * 100).toFixed(0)}%</b>${i === 0 ? help("upprob") : ""}${base[i] != null ? `<span class="note">（全市場 ${(base[i] * 100).toFixed(0)}%）</span>` : ""}</div>
-      <div class="stat">常見報酬 <b class="${cls(h.lo)}">${fmtPct(h.lo, 1)}</b> ～ <b class="${cls(h.hi)}">${fmtPct(h.hi, 1)}</b>${i === 0 ? help("range") : ""}</div>` : '<div class="stat muted">歷史資料不足，暫無機率估計</div>'}
+      ${h && h.up != null ? `<div class="stat">上漲機會 <b>${(h.up * 100).toFixed(0)}%</b>${i === 0 ? help("upprob") : ""}${base[i] != null ? `<span class="note">（一般股票 ${(base[i] * 100).toFixed(0)}%）</span>` : ""}</div>
+      <div class="stat">常見漲跌 <b class="${cls(h.lo)}">${fmtPct(h.lo, 1)}</b> ～ <b class="${cls(h.hi)}">${fmtPct(h.hi, 1)}</b>${i === 0 ? help("range") : ""}</div>` : '<div class="stat muted">過去資料還不夠，暫時無法估計機率</div>'}
     </div></div></section>`).join("")}
   </div>
-  ${cur ? `<section class="card section"><div class="card-h"><h2>為什麼是 ${Math.round(cur.score)} 分？</h2><span class="note">${HZ_NAME[S.hz]}觀點，影響最大的因素</span></div>
-    <div class="why"><div class="plus"><h3>加分</h3><ul>${cur.pos.length ? cur.pos.map((t) => `<li><i>＋</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯加分項</li>'}</ul></div>
-    <div class="minus"><h3>扣分</h3><ul>${cur.neg.length ? cur.neg.map((t) => `<li><i>－</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯扣分項</li>'}</ul></div></div>
-    <p class="note" style="margin:14px 0 0">分數 = 個股在全市場的排名（75%）＋ 大盤氣氛（25%）。目前排在全市場第 ${Math.round(cur.pct * 100)} 百分位。${cur.n ? `機率依過去 ${fmtInt(cur.n)} 筆同分數區間的實際結果估算。` : ""}${(S.latest.model?.[HZ[S.hz]]?.rel ?? 1) < 0.4 ? "這個期間的模型最近不太準，分數已自動往 50 收斂（可信度低）。" : ""}</p></section>` : ""}
+  ${cur ? `<section class="card section"><div class="card-h"><h2>為什麼是 ${Math.round(cur.score)} 分？</h2><span class="note">影響最大的幾個原因（未來 ${HZ_SHORT[S.hz]}）</span></div>
+    <div class="why"><div class="plus"><h3>加分（偏多的理由）</h3><ul>${cur.pos.length ? cur.pos.map((t) => `<li><i>＋</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯的加分理由</li>'}</ul></div>
+    <div class="minus"><h3>扣分（偏空的理由）</h3><ul>${cur.neg.length ? cur.neg.map((t) => `<li><i>－</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯的扣分理由</li>'}</ul></div></div>
+    <p class="note" style="margin:14px 0 0">分數主要看這檔股票和其他股票比起來條件好不好（占 3/4），再加上大盤氣氛（占 1/4）。它目前的條件贏過全市場 ${Math.round(cur.pct * 100)}% 的股票。${cur.n ? `上漲機會是根據過去 ${fmtInt(cur.n)} 個分數差不多的例子統計出來的。` : ""}${(S.latest.model?.[HZ[S.hz]]?.rel ?? 1) < 0.4 ? "這個期間的分數最近不太準，所以先調得比較保守（靠近 50 分）。" : ""}</p></section>` : ""}
   ${stockNewsCard(d.news)}
   <section class="card section"><div class="card-h"><h2>股價走勢</h2><div class="seg" id="rng" style="margin-left:auto"><button data-n="60">3 個月</button><button data-n="120" class="on">6 個月</button><button data-n="250">1 年</button></div></div>
     <div class="chart" id="kchart"></div></section>
   <div class="grid g2 section">
-    <section class="card"><div class="card-h"><h2>法人與融資</h2><span class="note">近 20 個交易日，單位：張</span></div>
+    <section class="card"><div class="card-h"><h2>法人與散戶動向</h2><span class="note">近 20 個交易日，單位：張</span></div>
       <div class="kv" style="margin-bottom:14px">
-        <div><span>外資 5 日</span><b class="${cls(sum(1, 5))}">${fmtInt(sum(1, 5))}</b></div>
-        <div><span>投信 5 日</span><b class="${cls(sum(2, 5))}">${fmtInt(sum(2, 5))}</b></div>
-        <div><span>自營商 5 日</span><b class="${cls(sum(3, 5))}">${fmtInt(sum(3, 5))}</b></div>
-        <div><span>融資餘額</span><b>${fmtInt(mbNow)}</b>${mbNow != null && mb20 ? `<span class="${cls(mbNow - mb20)}">20 日 ${mbNow >= mb20 ? "+" : ""}${fmtInt(mbNow - mb20)}</span>` : ""}</div>
+        <div><span>外資近 5 天</span><b class="${cls(sum(1, 5))}">${fmtInt(sum(1, 5))}</b></div>
+        <div><span>投信近 5 天</span><b class="${cls(sum(2, 5))}">${fmtInt(sum(2, 5))}</b></div>
+        <div><span>自營商近 5 天</span><b class="${cls(sum(3, 5))}">${fmtInt(sum(3, 5))}</b></div>
+        <div><span>融資（散戶借錢買）</span><b>${fmtInt(mbNow)}</b>${mbNow != null && mb20 ? `<span class="${cls(mbNow - mb20)}">20 日 ${mbNow >= mb20 ? "+" : ""}${fmtInt(mbNow - mb20)}</span>` : ""}</div>
       </div>
-      <h3>外資每日買賣超</h3><div class="chart" id="cfi"></div>
-      <h3 style="margin-top:10px">投信每日買賣超</h3><div class="chart" id="cit"></div>
+      <h3>外資每天買進（紅）或賣出（綠）</h3><div class="chart" id="cfi"></div>
+      <h3 style="margin-top:10px">投信每天買進（紅）或賣出（綠）</h3><div class="chart" id="cit"></div>
     </section>
-    <section class="card"><div class="card-h"><h2>基本面</h2><span class="note">${f.rev_ym ? "營收 " + f.rev_ym.slice(0, 3) + "/" + f.rev_ym.slice(3) : ""}${f.q ? "・財報 " + f.q : ""}</span></div>
+    <section class="card"><div class="card-h"><h2>公司賺不賺錢（基本面）</h2><span class="note">${f.rev_ym ? "營收 " + f.rev_ym.slice(0, 3) + "/" + f.rev_ym.slice(3) : ""}${f.q ? "・財報 " + f.q : ""}</span></div>
       <div class="kv">
-        <div><span>本益比</span><b>${f.pe ? f.pe.toFixed(1) + " 倍" : "—"}</b></div>
+        <div><span>本益比（越低越便宜）</span><b>${f.pe ? f.pe.toFixed(1) + " 倍" : "—"}</b></div>
         <div><span>股價淨值比</span><b>${f.pb ? f.pb.toFixed(2) + " 倍" : "—"}</b></div>
-        <div><span>殖利率</span><b>${f.yld != null ? f.yld.toFixed(2) + "%" : "—"}</b></div>
-        <div><span>月營收年增</span><b class="${cls(f.rev_yoy)}">${f.rev_yoy != null ? fmtPct(f.rev_yoy / 100, 1) : "—"}</b></div>
-        <div><span>累計營收年增</span><b class="${cls(f.rev_cum_yoy)}">${f.rev_cum_yoy != null ? fmtPct(f.rev_cum_yoy / 100, 1) : "—"}</b></div>
+        <div><span>殖利率（股利÷股價）</span><b>${f.yld != null ? f.yld.toFixed(2) + "%" : "—"}</b></div>
+        <div><span>上月營收比去年同月</span><b class="${cls(f.rev_yoy)}">${f.rev_yoy != null ? fmtPct(f.rev_yoy / 100, 1) : "—"}</b></div>
+        <div><span>今年累計營收比去年</span><b class="${cls(f.rev_cum_yoy)}">${f.rev_cum_yoy != null ? fmtPct(f.rev_cum_yoy / 100, 1) : "—"}</b></div>
         <div><span>毛利率</span><b>${f.gm != null ? f.gm.toFixed(1) + "%" : "—"}</b></div>
-        <div><span>營業利益率</span><b>${f.om != null ? f.om.toFixed(1) + "%" : "—"}</b></div>
-        <div><span>EPS（${f.eps_q || "累計"}）</span><b>${f.eps != null ? f.eps.toFixed(2) : "—"}</b></div>
+        <div><span>本業利潤率</span><b>${f.om != null ? f.om.toFixed(1) + "%" : "—"}</b></div>
+        <div><span>每股盈餘 EPS（${f.eps_q || "累計"}）</span><b>${f.eps != null ? f.eps.toFixed(2) : "—"}</b></div>
       </div>
       ${d.fut ? `<div class="card-h" style="margin-top:18px"><h2>個股期貨</h2>${help("basis")}</div>
         <div class="kv"><div><span>${esc(d.fut.c)} 近月</span><b>${fmtPx(d.fut.close)}</b></div><div><span>期現價差</span><b class="${cls(d.fut.basis)}">${fmtPct(d.fut.basis)}</b></div>
         <div><span>成交量</span><b>${fmtInt(d.fut.vol)} 口</b></div><div><span>未平倉</span><b>${fmtInt(d.fut.oi)} 口</b></div></div>` : ""}
-      ${d.warrants ? `<div class="card-h" style="margin-top:18px"><h2>條件較好的權證</h2>${help("quality")}<a class="more" href="#/warrants/${code}">全部 ${d.warrants.n_call + d.warrants.n_put} 檔</a></div>
+      ${d.warrants ? `<div class="card-h" style="margin-top:18px"><h2>比較划算的權證</h2>${help("quality")}<a class="more" href="#/warrants/${code}">全部 ${d.warrants.n_call + d.warrants.n_put} 檔</a></div>
         ${miniWarrants(d.warrants)}` : ""}
     </section>
   </div>${disclaimer}`;
@@ -690,10 +690,10 @@ async function vWarrants(tok, u) {
   if (tok !== routeToken) return;
   if (!wp) { view.innerHTML = `<h1>權證</h1><div class="card empty"><h2>權證資料準備中</h2><p>下次更新資料後就會出現。</p></div>`; return; }
   view.innerHTML = `<h1>權證</h1>
-  <p class="lead">先選標的，再挑條件好的權證。推薦度同時看「權證本身划不划算」和「標的股票的看多／看空分數」。認購權證適合看漲、認售權證適合看跌。</p>
-  <div class="filters"><input type="text" id="wu" placeholder="輸入標的代號或名稱，例如 2330" style="min-width:260px" aria-label="搜尋標的"></div>
+  <p class="lead">先選一檔股票，再挑划算的權證。看漲買「認購」、看跌買「認售」。推薦度同時看兩件事：權證本身划不划算，以及股票本身看漲還是看跌。</p>
+  <div class="filters"><input type="text" id="wu" placeholder="輸入股票代號或名稱，例如 2330" style="min-width:260px" aria-label="搜尋標的"></div>
   <div id="wulist"></div>
-  <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>今日精選</h2>${help("rec")}<span class="note">每個標的只列最好的一檔；只列有成交、品質 60 分以上、方向和標的分數一致的權證</span></div>
+  <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>今日精選</h2>${help("rec")}<span class="note">每檔股票只挑一檔最划算的；只列今天有成交、條件 60 分以上、而且看漲看跌方向和股票分數一致的</span></div>
     ${warrantTable(wp.picks, true)}</section>${disclaimer}`;
   const draw = () => {
     const q = $("#wu").value.trim().toLowerCase();
@@ -706,10 +706,10 @@ async function vWarrants(tok, u) {
 function warrantTable(rows, showU) {
   if (!rows || !rows.length) return '<div class="empty"><p>目前沒有符合條件的權證。</p></div>';
   return `<div class="tbl-wrap"><table class="tbl"><thead><tr>
-    <th>權證</th>${showU ? "<th>標的分數</th>" : ""}<th>推薦度${help("rec")}</th><th>品質${help("quality")}</th><th>價格</th><th>價內外${help("money")}</th><th>剩餘天數${help("days")}</th>
-    <th>實質槓桿${help("lev")}</th><th>隱含／歷史波動${help("iv")}</th><th>買賣價差${help("spread")}</th><th>每日時間損耗${help("theta")}</th><th style="text-align:left">白話說明</th></tr></thead><tbody>
+    <th>權證</th>${showU ? "<th>股票分數</th>" : ""}<th>推薦度${help("rec")}</th><th>條件分數${help("quality")}</th><th>價格</th><th>價內外${help("money")}</th><th>剩幾天到期${help("days")}</th>
+    <th>槓桿${help("lev")}</th><th>貴不貴（權證／股票波動）${help("iv")}</th><th>買賣價差${help("spread")}</th><th>每天耗損${help("theta")}</th><th style="text-align:left">白話說明</th></tr></thead><tbody>
     ${rows.map((p) => `<tr><td><b>${esc(p.n)}</b><br><span class="muted small">${p.c}・${p.t === "C" ? "認購" : "認售"}${showU ? "・" + esc(p.un) : ""}</span></td>
-      ${showU ? `<td>${p.us ? pill(p.us[1], "標的中期分數") : "—"}</td>` : ""}
+      ${showU ? `<td>${p.us ? pill(p.us[1], "股票中期（1 個月）分數") : "—"}</td>` : ""}
       <td><span class="q ${p.rec >= 70 ? "hi" : p.rec >= 50 ? "md" : "lo"}">${Math.round(p.rec)}</span></td>
       <td>${Math.round(p.q)}</td><td>${fmtPx(p.P)}</td><td class="${p.money >= 0 ? "" : "muted"}">${p.money >= 0 ? "價內 " : "價外 "}${(Math.abs(p.money) * 100).toFixed(1)}%</td>
       <td>${p.days}</td><td>${p.lev != null ? p.lev.toFixed(1) + " 倍" : "—"}</td>
@@ -725,12 +725,12 @@ async function vWarrantsOf(tok, u) {
   const name = r ? r.n : u === "IX0001" ? "臺股指數" : u;
   const sc = r ? r.s : u === "IX0001" ? HZ.map((h) => S.latest.market.horizons[h].score) : null;
   const sMid = sc ? sc[S.hz] : null;
-  const advice = sMid == null ? "" : sMid >= 60 ? `標的${HZ_NAME[S.hz]}分數 ${Math.round(sMid)}（${labelOf(sMid)}），方向上較適合認購權證。` : sMid <= 40 ? `標的${HZ_NAME[S.hz]}分數 ${Math.round(sMid)}（${labelOf(sMid)}），方向上較適合認售權證。` : `標的${HZ_NAME[S.hz]}分數 ${Math.round(sMid)}，方向不明確，建議先觀望或只看條件特別好的權證。`;
+  const advice = sMid == null ? "" : sMid >= 60 ? `這檔股票未來 ${HZ_SHORT[S.hz]}是 ${Math.round(sMid)} 分（${labelOf(sMid)}），看漲，比較適合買認購權證。` : sMid <= 40 ? `這檔股票未來 ${HZ_SHORT[S.hz]}是 ${Math.round(sMid)} 分（${labelOf(sMid)}），看跌，比較適合買認售權證。` : `這檔股票未來 ${HZ_SHORT[S.hz]}是 ${Math.round(sMid)} 分，看不出明顯方向，建議先觀望，或只考慮條件特別好的權證。`;
   if (sMid != null && sMid <= 40) wTab = "P"; else if (sMid != null && sMid >= 60) wTab = "C";
-  view.innerHTML = `<p><a class="note" href="#/warrants">← 回到權證首頁</a></p>
-    <div class="sh"><div><h1 style="margin-bottom:2px">${esc(name)} 的權證</h1><div class="muted small">認購 ${w.n_call} 檔、認售 ${w.n_put} 檔，依品質由高到低列出前 40 檔</div></div>
+  view.innerHTML = `<p><a class="note" href="#/warrants">← 回到權證</a></p>
+    <div class="sh"><div><h1 style="margin-bottom:2px">${esc(name)} 的權證</h1><div class="muted small">認購 ${w.n_call} 檔、認售 ${w.n_put} 檔，依條件由好到差列出前 40 檔</div></div>
       ${sc ? `<div style="display:flex;gap:8px;align-items:center">${sc.map((s, i) => `<span class="small muted">${HZ_NAME[i]}</span>${pill(s)}`).join("")}</div>` : ""}
-      ${r ? `<a class="btn" href="#/stock/${u}" style="margin-left:auto">看標的個股分析</a>` : ""}</div>
+      ${r ? `<a class="btn" href="#/stock/${u}" style="margin-left:auto">看這檔股票的分析</a>` : ""}</div>
     ${advice ? `<div class="warnbox">${esc(advice)}</div>` : ""}
     <div class="section"><div class="seg" id="wtab"><button data-t="C">認購（看漲）</button><button data-t="P">認售（看跌）</button></div></div>
     <section class="card flush section" id="wtbl"></section>${disclaimer}`;
@@ -749,30 +749,30 @@ async function vFutures(tok) {
   const M = S.latest.market, hz = HZ[S.hz], mh = M.horizons[hz], ser = M.series || {};
   const tx = F.index.find((x) => x.c === "TX");
   const basisPts = tx && M.taiex ? tx.close - M.taiex : null;
-  view.innerHTML = `<h1>期貨</h1><p class="lead">台指期跟著大盤走，所以方向判斷沿用大盤分數；另外參考正逆價差、外資留倉與選擇權籌碼。個股期貨則看標的股票的分數。</p>
+  view.innerHTML = `<h1>期貨</h1><p class="lead">台指期就是押大盤會漲還是會跌，所以直接用大盤分數判斷方向。下面另外列出外資在期貨上押多押空、期貨和現貨的價差等，幫你看市場氣氛。個股期貨則看那檔股票本身的分數。</p>
   <section class="card hero glow"><span class="glow-ring"></span>
-    <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">台指期${HZ_NAME[S.hz]}${mh.label}</div></div>
+    <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">台指期${mh.label}</div><div class="note">未來 ${HZ_SHORT[S.hz]}</div></div>
     <div class="hero-side">
       <div class="idx"><span class="muted">臺股期貨 ${tx ? tx.month.slice(0, 4) + "/" + tx.month.slice(4) : ""}</span><span class="big" ${tx ? `data-count="${tx.close}"` : ""}>${tx ? fmtPx(tx.close) : "—"}</span><span class="chg">${chgHtml(tx && tx.chg)}</span></div>
       <div class="kv" style="margin-top:14px">
-        <div><span>正逆價差${help("basis")}</span><b class="${cls(basisPts)}">${basisPts != null ? (basisPts >= 0 ? "正價差 " : "逆價差 ") + Math.abs(basisPts).toFixed(0) + " 點" : "—"}</b></div>
-        <div><span>外資淨留倉${help("foi")}</span><b class="${cls(M.foi)}">${M.foi != null ? (M.foi >= 0 ? "多 " : "空 ") + fmtInt(Math.abs(M.foi)) + " 口" : "—"}</b></div>
-        <div><span>外資留倉 5 日變化</span><b class="${cls(M.foi5)}">${M.foi5 != null ? (M.foi5 >= 0 ? "+" : "") + fmtInt(M.foi5) + " 口" : "—"}</b></div>
-        <div><span>買賣權未平倉比${help("pc")}</span><b>${M.pc != null ? M.pc.toFixed(1) + "%" : "—"}</b></div>
+        <div><span>期貨比現貨${help("basis")}</span><b class="${cls(basisPts)}">${basisPts != null ? (basisPts >= 0 ? "高 " : "低 ") + Math.abs(basisPts).toFixed(0) + " 點" : "—"}</b></div>
+        <div><span>外資押漲／押跌${help("foi")}</span><b class="${cls(M.foi)}">${M.foi != null ? (M.foi >= 0 ? "押漲 " : "押跌 ") + fmtInt(Math.abs(M.foi)) + " 口" : "—"}</b></div>
+        <div><span>外資近 5 天加碼</span><b class="${cls(M.foi5)}">${M.foi5 != null ? (M.foi5 >= 0 ? "+" : "") + fmtInt(M.foi5) + " 口" : "—"}</b></div>
+        <div><span>選擇權看跌／看漲比${help("pc")}</span><b>${M.pc != null ? M.pc.toFixed(1) + "%" : "—"}</b></div>
       </div>
-      <ul class="facts">${mh.pos.length ? `<li>加分：${esc(mh.pos.join("、"))}</li>` : ""}${mh.neg.length ? `<li>扣分：${esc(mh.neg.join("、"))}</li>` : ""}</ul>
+      <ul class="facts">${mh.pos.length ? `<li>有利大盤：${esc(mh.pos.join("、"))}</li>` : ""}${mh.neg.length ? `<li>不利大盤：${esc(mh.neg.join("、"))}</li>` : ""}</ul>
     </div>
   </section>
   <div class="grid g3 section">
-    <section class="card"><div class="card-h"><h2>外資台指期淨留倉</h2><span class="note">口</span></div><div class="chart" id="cfoi"></div></section>
+    <section class="card"><div class="card-h"><h2>外資在期貨上押漲（正）或押跌（負）</h2><span class="note">口</span></div><div class="chart" id="cfoi"></div></section>
     <section class="card"><div class="card-h"><h2>加權指數</h2></div><div class="chart" id="ctx"></div></section>
-    <section class="card"><div class="card-h"><h2>買賣權未平倉比</h2><span class="note">%</span></div><div class="chart" id="cpc"></div></section>
+    <section class="card"><div class="card-h"><h2>選擇權看跌／看漲比</h2><span class="note">%</span></div><div class="chart" id="cpc"></div></section>
   </div>
   <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>指數期貨</h2></div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>商品</th><th>月份</th><th>收盤</th><th>漲跌</th><th>成交量</th><th>未平倉${help("oi")}</th></tr></thead><tbody>
     ${F.index.map((x) => `<tr><td><b>${esc(x.n)}</b></td><td>${x.month.slice(0, 4)}/${x.month.slice(4)}</td><td>${fmtPx(x.close)}</td><td>${chgHtml(x.chg)}</td><td>${fmtInt(x.vol)}</td><td>${fmtInt(x.oi)}</td></tr>`).join("")}</tbody></table></div></section>
-  <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>個股期貨</h2><span class="note">依成交量排序，分數為標的股票的分數</span></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>標的</th><th>期貨價</th><th>現貨價</th><th>期現價差${help("basis")}</th><th>成交量</th><th>未平倉變化${help("oi")}</th>${HZ.map((_, i) => `<th>${hzTag(i)}</th>`).join("")}</tr></thead><tbody>
+  <section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>個股期貨</h2><span class="note">依成交量排序；分數是那檔股票本身的分數</span></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>標的</th><th>期貨價</th><th>現貨價</th><th>期貨比現貨${help("basis")}</th><th>成交量</th><th>未平倉增減${help("oi")}</th>${HZ.map((_, i) => `<th>${hzTag(i)}</th>`).join("")}</tr></thead><tbody>
     ${F.stock.slice(0, 80).map((x) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${x.stock}'"><td><b>${esc(x.n)}</b> <span class="muted small">${x.stock}・${x.c}</span></td><td>${fmtPx(x.close)}</td><td>${fmtPx(x.spot)}</td>
       <td class="${cls(x.basis)}">${fmtPct(x.basis)}</td><td>${fmtInt(x.vol)}</td><td class="${cls(x.oi_chg)}">${x.oi_chg != null ? (x.oi_chg >= 0 ? "+" : "") + fmtInt(x.oi_chg) : "—"}</td>
       ${(x.s || [null, null, null]).map((s) => `<td>${pill(s)}</td>`).join("")}</tr>`).join("") || '<tr><td colspan="9">暫無資料</td></tr>'}</tbody></table></div></section>${disclaimer}`;
@@ -801,25 +801,25 @@ async function vDayTrade(tok) {
   if (!dtSide) dtSide = d.long_ok !== d.short_ok ? (d.long_ok > d.short_ok ? "long" : "short") : (sideOk(M.short) && !sideOk(M.long) ? "short" : "long");
   const pctS = (x) => (x * 100).toFixed(1) + "%";
   const sv = (x) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(2)}%</span>`;
-  const statLine = (x, name) => x ? `${name}：扣成本後勝率 <b class="num">${pctS(x.win)}</b>，平均每筆 ${sv(x.avg)}` : `${name}：資料不足`;
+  const statLine = (x, name) => x ? `${name}扣掉成本後 <b class="num">${pctS(x.win)}</b> 的機會賺錢，平均每筆 ${sv(x.avg)}` : `${name}：資料不足`;
   view.innerHTML = `<h1 class="grad">當沖</h1>
-  <p class="lead">依 ${dayFull(d.day)} 收盤資料，評估<b>下一個交易日</b>開盤進場、收盤前出場的勝算。勝率與報酬都已扣除來回成本約 ${(d.cost * 100).toFixed(2)}%（手續費 6 折＋當沖證交稅 0.15%）。只看日均成交 1 億元以上、股價 10 元以上的股票，共 ${d.universe} 檔。</p>
-  <a class="card checklink" href="#/check">${svgI("target")}<span><b>回測：做多 ${sideOk(L) ? "有優勢" : "目前無優勢"}、做空 ${sideOk(Sx) ? "有優勢" : "目前無優勢"}</b><span class="note">${statLine(L, "做多組")}；${statLine(Sx, "做空組")}。完整實測與自動優化紀錄請看「實測對答案」。</span></span></a>
+  <p class="lead">依 ${dayFull(d.day)} 收盤資料，估計<b>下一個交易日</b>「開盤買進、收盤前賣出」（或反過來先賣後買）能賺錢的機會。勝算已經扣掉手續費（6 折）和當沖證交稅，一買一賣約 ${(d.cost * 100).toFixed(2)}%。只看每天成交 1 億元以上、股價 10 元以上的股票，共 ${d.universe} 檔。</p>
+  <a class="card checklink" href="#/check">${svgI("target")}<span><b>過去成績：先買後賣${sideOk(L) ? "有優勢" : "目前沒有優勢"}、先賣後買${sideOk(Sx) ? "有優勢" : "目前沒有優勢"}</b><span class="note">照分數先買後賣，${statLine(L, "")}；先賣後買，${statLine(Sx, "")}。詳細請看「實測對答案」。</span></span></a>
   <div class="section"><div class="seg" id="dtab"><button data-s="long">做多（先買後賣）</button><button data-s="short">做空（先賣後買）</button></div></div>
   <div id="dtwarn"></div>
   <section class="card flush section" id="dtlist"></section>
   <div class="section">
-    <section class="card"><h3>目前最看重的指標</h3><p class="note" style="margin:2px 0 8px">紅色＝數值越高越適合做多，綠色＝數值越高越適合做空</p><div class="bars" id="dtfw"></div></section>
+    <section class="card"><h3>目前最看重的指標</h3><p class="note" style="margin:2px 0 8px">紅色＝數字越高越適合先買後賣，綠色＝數字越高越適合先賣後買；越長影響越大</p><div class="bars" id="dtfw"></div></section>
   </div>
-  <p class="disclaimer">當沖風險極高：交易成本會吃掉大部分利潤，盤中波動也可能遠超停損參考。分數與勝率是過去的統計，不保證明天的結果，也不構成投資建議。請先確認自己已開通當沖資格，並嚴格控制部位。</p>`;
+  <p class="disclaimer">當沖風險非常高：手續費和稅會吃掉大部分利潤，盤中漲跌也可能遠超過停損參考。勝算是過去的統計，不保證明天一定如此，也不是投資建議。請先確認已開通當沖資格，並嚴格控制買賣的金額。</p>`;
   const draw = () => {
     $$("#dtab button").forEach((b) => b.classList.toggle("on", b.dataset.s === dtSide));
     const rows = d[dtSide] || [];
     const okN = rows.filter((r) => r.ok).length;
     const sideStat = dtSide === "long" ? L : Sx;
-    $("#dtwarn").innerHTML = okN ? `<div class="warnbox section">今天有 <b>${okN}</b> 檔符合推薦條件（同分數區間過去扣成本後勝率超過 50% 且平均報酬為正），標示為「推薦」。其餘僅列入觀察。</div>` :
-      `<div class="warnbox section">這個方向今天<b>沒有</b>符合推薦條件的標的：同分數區間的股票過去扣掉成本後平均仍是虧損${sideOk(sideStat) ? "" : "，整體回測也還沒有優勢"}。以下名單只供觀察，不建議照做。</div>`;
-    $("#dtlist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>收盤</th><th>勝算${help("dtwin")}</th><th>平均報酬</th><th>停利參考${help("dttp")}</th><th>停損參考${help("dtsl")}</th><th>平均振幅</th><th>日均成交</th><th style="text-align:left">理由</th></tr></thead><tbody>
+    $("#dtwarn").innerHTML = okN ? `<div class="warnbox section">今天有 <b>${okN}</b> 檔標示「推薦」：過去條件差不多的股票，扣掉成本後賺錢的機會超過一半，而且平均是賺的。其他只供觀察。</div>` :
+      `<div class="warnbox section">這個方向今天<b>沒有</b>推薦的股票：過去條件差不多的股票，扣掉成本後平均還是虧錢${sideOk(sideStat) ? "" : "，整體來看這個方向目前也沒有優勢"}。下面的名單只供觀察，不建議照做。</div>`;
+    $("#dtlist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>收盤</th><th>勝算${help("dtwin")}</th><th>平均每筆</th><th>停利參考${help("dttp")}</th><th>停損參考${help("dtsl")}</th><th>每天平均震盪</th><th>每天成交</th><th style="text-align:left">理由</th></tr></thead><tbody>
       ${rows.map((r) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'"><td><b>${esc(r.n)}</b> ${r.al ? '<span class="tag alert1">注意股</span> ' : ""}${r.ok ? `<span class="pill ${dtSide === "long" ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">推薦</span>` : ""}<br><span class="muted small">${r.c}・${esc(r.m)}</span></td>
         <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
         <td><span class="pill ${dtPill(r.win, dtSide)}" title="扣成本後勝率">${(r.win * 100).toFixed(0)}%</span></td><td>${sv(r.avg)}</td>
@@ -841,27 +841,26 @@ async function vWatch(tok) {
   await loadWatch();
   if (tok !== routeToken) return;
   const rows = S.watch.map((c) => S.byCode[c]).filter(Boolean);
-  view.innerHTML = `<h1>我的自選</h1><p class="lead">在任何股票旁點星號就能加入。自選清單存在你的電腦上，電腦與手機開啟時會看到同一份。</p>
+  view.innerHTML = `<h1>我的自選</h1><p class="lead">在任何股票旁點星號就能加入。${S.status && S.status.static ? "雲端版的自選存在這支手機（或這個瀏覽器）裡。" : "自選清單存在你的電腦上，電腦和手機開啟時看到的是同一份。"}</p>
     ${rows.length ? `<section class="card flush"><div class="list">${rowsHead3("", 0)}${rows.map((r) => stockRow(r, { mode: "three" })).join("")}</div></section>` :
       `<div class="card empty"><h2>還沒有自選股</h2><p>用上方搜尋找到股票後，點「自選」星號加入，就能在這裡一次看到它們的分數。</p><a class="btn primary" href="#/stocks">去選股</a></div>`}${disclaimer}`;
 }
 
-// ====================================================================== 模型成績單
+// ====================================================================== 分數怎麼算
 async function vModel(tok) {
   const m = await api("model");
   let tu = null;
   try { tu = await api("tuning"); } catch { }
   if (tok !== routeToken) return;
-  view.innerHTML = `<h1>模型權重</h1>
-  <p class="lead">每個期間的分數由約 35 個指標加權而成。下面是目前各指標的權重，以及依實測結果自動選出的權重調整方式。分數準不準請看 <a href="#/check" style="color:var(--brass)">實測對答案</a>。資料期間：${dayFull(m.first_day)}～${dayFull(m.last_day)}，共 ${m.days} 個交易日。</p>
-  ${HZ.map((h, i) => `<section class="card section"><div class="card-h"><h2>${HZ_NAME[i]}<span class="note" style="margin-left:8px">${HZ_SPAN[i]}</span></h2><span class="note">目前採用：${esc(((tu && tu.main) || {})[h]?.name || "預設")}</span></div>
-      <p class="note" style="margin:0 0 10px">紅色＝數值越高越加分，綠色＝數值越高越扣分；長度代表影響力。滑過可看該指標最近的預測力。</p>
+  view.innerHTML = `<h1>分數怎麼算</h1>
+  <p class="lead">分數由約 35 項指標組成，每項指標占的比重不一樣。下面列出每個期間影響最大的指標：<b>紅色</b>代表數字越高越加分，<b>綠色</b>代表數字越高越扣分，長條越長影響越大。比重怎麼決定、準不準，請看 <a href="#/check" style="color:var(--brass)">實測對答案</a>。資料期間 ${dayFull(m.first_day)}～${dayFull(m.last_day)}，共 ${m.days} 個交易日。</p>
+  ${HZ.map((h, i) => `<section class="card section"><div class="card-h"><h2>${HZ_NAME[i]}：預測未來 ${HZ_SHORT[i]}</h2><span class="note">目前做法：${esc(((tu && tu.main) || {})[h]?.name || "預設做法")}</span></div>
       <div class="bars fw2" id="fw${i}"></div></section>`).join("")}
-  <p class="disclaimer">權重會每天依實測結果自動更新。資料天數越多越可信；剛開始使用的前幾週，權重主要依預設值。</p>`;
+  <p class="disclaimer">比重每天收盤後依實測結果自動更新。累積的資料越多，越可信。</p>`;
   const draw = () => HZ.forEach((h, i) => {
     const x = m.horizons[h];
     const fs = (x.factors || []).slice(0, 16), mx = Math.max(...fs.map((f) => Math.abs(f.w)), 1e-6);
-    $("#fw" + i).innerHTML = fs.map((f) => `<div class="b" title="${esc(f.group)}：最近預測力（IC）${f.ic ?? "—"}，檢驗 ${f.n} 天"><span class="nm">${esc(f.name)}</span><div class="sbar"><div class="track"><div class="fill ${f.w >= 0 ? "u" : "d"}" style="left:${f.w >= 0 ? 50 : 50 - Math.abs(f.w) / mx * 50}%;width:${Math.abs(f.w) / mx * 50}%"></div></div></div><span class="v small">${f.group}</span></div>`).join("");
+    $("#fw" + i).innerHTML = fs.map((f) => `<div class="b" title="${esc(f.group)}類指標；最近 ${accLabel(f.ic).t}"><span class="nm">${esc(f.name)}</span><div class="sbar"><div class="track"><div class="fill ${f.w >= 0 ? "u" : "d"}" style="left:${f.w >= 0 ? 50 : 50 - Math.abs(f.w) / mx * 50}%;width:${Math.abs(f.w) / mx * 50}%"></div></div></div><span class="v small">${f.group}</span></div>`).join("");
   });
   draw(); onResize(() => location.hash === "#/model" && draw());
 }
@@ -890,11 +889,11 @@ function globalCard(G) {
   if (!G || !G.rows || !G.rows.length) return "";
   const fmtV = (r) => r.unit === "pt" ? r.v.toFixed(2) + "%" : r.v >= 1000 ? fmtInt(Math.round(r.v)) : r.v.toFixed(r.v >= 100 ? 1 : 2);
   const ch = (r, x) => x == null ? "—" : r.unit === "pt" ? `<span class="${cls(x)}">${x > 0 ? "+" : ""}${x.toFixed(2)}</span>` : chgHtml(x, 1);
-  const NOTE = { "TWD=X": "上升＝台幣貶", "^VIX": "越高越恐慌", "^TNX": "變化單位：百分點" };
+  const NOTE = { "^SOX": "台股電子股的風向球", "^IXIC": "美國科技股", "^GSPC": "美國大型股", "TSM": "台積電在美國的股價", "^VIX": "越高代表市場越緊張", "^TNX": "利率；變化以百分點計", "TWD=X": "數字變大＝台幣貶值", "DX-Y.NYB": "美元強弱", "^N225": "日本股市", "CL=F": "國際油價" };
   return `<section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${svgI("globe")} 國際市場</h2>${help("glob")}<span class="note" style="margin-left:auto">${G.at ? "更新 " + esc(G.at.slice(5)) : ""}</span></div>
     <div class="tbl-wrap"><table class="tbl gtbl"><thead><tr><th style="text-align:left">項目</th><th>最新</th><th>1 日</th><th>1 週</th><th class="hide-s2">1 個月</th><th class="hide-s">近 3 個月</th></tr></thead><tbody>
     ${G.rows.map((r) => `<tr><td style="text-align:left"><b>${esc(r.name)}</b>${NOTE[r.sym] ? `<br><span class="muted small">${NOTE[r.sym]}</span>` : ""}</td><td class="num">${fmtV(r)}</td><td>${ch(r, r.c1)}</td><td>${ch(r, r.c5)}</td><td class="hide-s2">${ch(r, r.c20)}</td><td class="hide-s">${spark(r.spark, (r.spark[r.spark.length - 1] ?? 0) >= (r.spark[0] ?? 0))}</td></tr>`).join("")}
-    </tbody></table></div><p class="note" style="padding:8px 22px 16px;margin:0">美股為前一個美國交易日收盤。這些數字已納入大盤分數，權重由歷史資料檢驗後自動調整。</p></section>`;
+    </tbody></table></div><p class="note" style="padding:8px 22px 16px;margin:0">美股是前一晚的收盤。這些數字已經算進大盤分數。</p></section>`;
 }
 function sentTag(x) {
   if (x > 0.05) return '<span class="stag pos">利多</span>';
@@ -911,19 +910,19 @@ function ago(ts) {
 function newsCard(N) {
   if (!N) return `<section class="card"><div class="card-h"><h2>${svgI("news")} 消息面</h2></div><p class="note">新聞資料將在下次更新後出現。</p></section>`;
   const tot = N.pos + N.neg || 1, pw = N.pos / tot * 100;
-  const mood = N.mood > 0.05 ? "偏樂觀" : N.mood < -0.05 ? "偏悲觀" : "多空互見";
+  const mood = N.mood > 0.05 ? "偏樂觀" : N.mood < -0.05 ? "偏悲觀" : "好壞參半";
   return `<section class="card flush"><div class="card-h" style="padding:18px 22px 4px"><h2>${svgI("news")} 消息面</h2>${help("news")}<span class="note" style="margin-left:auto">近兩天 ${N.n} 則財經新聞</span></div>
-    <div style="padding:4px 22px 10px"><div class="moodline"><span>新聞氣氛 <b>${mood}</b></span><span class="note">利多 ${N.pos} 則・利空 ${N.neg} 則</span></div>
+    <div style="padding:4px 22px 10px"><div class="moodline"><span>新聞氣氛 <b>${mood}</b></span><span class="note">好消息 ${N.pos} 則・壞消息 ${N.neg} 則</span></div>
       <div class="moodbar"><i style="width:${pw}%"></i></div>
-      ${N.warn_n || N.disp_n ? `<p class="note" style="margin:8px 0 0">今天有 ${N.warn_n} 檔注意股、${N.disp_n} 檔處置股（處置股交易受限，已自動排除在當沖推薦之外）。</p>` : ""}</div>
+      ${N.warn_n || N.disp_n ? `<p class="note" style="margin:8px 0 0">今天有 ${N.warn_n} 檔被列為注意股（近期漲跌或成交量異常）、${N.disp_n} 檔處置股（交易受限制，已從當沖推薦中排除）。</p>` : ""}</div>
     <ul class="newslist">${(N.heads || []).slice(0, 8).map((h) => `<li>${sentTag(h.s)}<a href="${esc(h.u)}" target="_blank" rel="noopener">${esc(h.t)}</a><span class="muted small">${esc(h.src || "")}・${ago(h.at)}</span></li>`).join("")}</ul></section>`;
 }
 function stockNewsCard(N) {
   if (!N) return "";
   const items = N.items || [], mops = N.mops || [];
   return `<section class="card section"><div class="card-h"><h2>${svgI("news")} 相關新聞與公告</h2>${help("news")}<span class="note">近期，依時間排列</span></div>
-    ${N.disp ? `<div class="warnbox" style="margin-bottom:10px">本股目前為<b>處置股</b>：${esc(N.disp)}。處置期間採人工管制撮合，買賣需預收款券，流動性會變差。</div>` : N.warn ? `<div class="warnbox" style="margin-bottom:10px">本股今天被列為<b>注意股</b>：${esc(N.warn)}</div>` : ""}
-    ${mops.length ? `<h3>重大訊息（公開資訊觀測站）</h3><ul class="newslist tight">${mops.map((m) => `<li>${sentTag(m.s)}<span>${esc(m.t)}</span><span class="muted small">${dayStr(m.d)}</span></li>`).join("")}</ul>` : ""}
+    ${N.disp ? `<div class="warnbox" style="margin-bottom:10px">本股目前為<b>處置股</b>：${esc(N.disp)}。處置期間每隔幾分鐘才撮合一次，買賣前還要先付清款項或股票，比較難買賣。</div>` : N.warn ? `<div class="warnbox" style="margin-bottom:10px">本股今天被列為<b>注意股</b>：${esc(N.warn)}</div>` : ""}
+    ${mops.length ? `<h3>公司公告（公開資訊觀測站重大訊息）</h3><ul class="newslist tight">${mops.map((m) => `<li>${sentTag(m.s)}<span>${esc(m.t)}</span><span class="muted small">${dayStr(m.d)}</span></li>`).join("")}</ul>` : ""}
     ${items.length ? `<h3 style="margin-top:10px">新聞</h3><ul class="newslist tight">${items.map((h) => `<li>${sentTag(h.s)}<a href="${esc(h.u)}" target="_blank" rel="noopener">${esc(h.t)}</a><span class="muted small">${esc(h.src || "")}・${ago(h.at)}</span></li>`).join("")}</ul>` : '<p class="note">最近沒有提到這檔股票的新聞。</p>'}
   </section>`;
 }
@@ -961,10 +960,19 @@ function checkChart(box, series, h) {
 }
 function verdictOf(edge, good, bad, pre = "") {
   if (edge == null) return { t: "資料不足", c: "p-mid" };
-  if (edge >= good) return { t: pre + "有參考價值", c: "p-up1" };
-  if (edge <= bad) return { t: pre + "不準", c: "p-dn1" };
+  if (edge >= good) return { t: pre + "有參考價值", c: "p-good" };
+  if (edge <= bad) return { t: pre + "不準", c: "p-bad" };
   return { t: pre + "普通", c: "p-mid" };
 }
+function accLabel(x) {
+  if (x == null) return { t: "資料不足", c: "" };
+  if (x >= 0.05) return { t: "很準", c: "acc-good" };
+  if (x >= 0.02) return { t: "有用", c: "acc-good" };
+  if (x > 0.005) return { t: "略有用", c: "" };
+  if (x > -0.005) return { t: "沒差別", c: "muted" };
+  return { t: "猜反了", c: "acc-bad" };
+}
+function tenTimes(p) { return p == null ? "" : `10 次裡約有 ${Math.round(p * 10)} 次是這樣`; }
 async function vCheck(tok) {
   const m = await api("model");
   let dt = null, tu = null;
@@ -974,10 +982,8 @@ async function vCheck(tok) {
   const MC = m.market_check || {}, MR = m.market_rel || {};
   const P = (x, d = 0) => x == null ? "—" : (x * 100).toFixed(d) + "%";
   const R = (x, d = 2) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(d)}%</span>`;
-  const IC = (x) => x == null ? "—" : `<span class="${x > 0 ? "up" : x < 0 ? "down" : ""}">${x > 0 ? "+" : ""}${x.toFixed(3)}</span>`;
   const DM = dt && dt.model;
-  const cfgName = (part, hn) => tu ? (part === "dt" ? tu.dt : (tu.main || {})[hn])?.name || "—" : "—";
-  // 近期是否轉差：比較較早與最近 40 天的滾動 IC
+  const cfgName = (part, hn) => tu ? (part === "dt" ? tu.dt : (tu.main || {})[hn])?.name || "預設做法" : "預設做法";
   const trend = (roll) => {
     const v = (roll || []).map((p) => p[1]).filter((x) => x != null);
     if (v.length < 60) return null;
@@ -985,38 +991,44 @@ async function vCheck(tok) {
     return { early: a.reduce((s, x) => s + x, 0) / a.length, late: b.reduce((s, x) => s + x, 0) / b.length };
   };
   const ok = (x) => x && x.avg > 0 && x.win > 0.5;
-  // ---- 總表
-  const rowsHz = HZ.map((h, i) => {
-    const x = m.horizons[h], c = MC[h] || {};
-    const mEdge = c.call_hit != null && c.base_up != null ? c.call_hit - Math.max(c.base_up, 1 - c.base_up) : null;
-    return `<tr><td><b>${HZ_NAME[i]}</b><br><span class="muted small">${HZ_SPAN[i]}</span></td>
-      <td>${P(x.top_hit, 1)}<br><span class="muted small">全市場 ${P(x.base_hit, 1)}</span></td>
-      <td>${R(x.spread_avg)}<br><span class="muted small">${x.spread_win != null ? P(x.spread_win) + " 的日子成立" : ""}</span></td>
-      <td>${c.corr == null ? "—" : c.corr >= 0.15 ? '<span class="pill p-up1 sm">有參考價值</span>' : '<span class="pill p-mid sm">未勝過「一律猜漲」</span>'}<br><span class="muted small">${mEdge != null ? `命中 ${P(c.call_hit)}／一律猜漲 ${P(Math.max(c.base_up, 1 - c.base_up))}` : ""}</span></td>
-      <td><span class="pill ${relInfo(x.rel).c} sm">${relInfo(x.rel).t}</span></td>
-      <td class="txt">${esc(cfgName("main", h))}</td></tr>`;
-  }).join("");
-  const rowDt = DM && DM.long ? `<tr><td><b>當沖</b><br><span class="muted small">隔天開盤→收盤</span></td>
-      <td>做多組勝率 ${P(DM.long.win, 1)}<br><span class="muted small">${ok(DM.long) ? "有優勢" : "無優勢"}（扣成本後）</span></td>
-      <td>做空組勝率 ${P(DM.short && DM.short.win, 1)}<br><span class="muted small">${ok(DM.short) ? "有優勢" : "無優勢"}（扣成本後）</span></td>
-      <td>—</td><td>—</td><td class="txt">${esc(cfgName("dt"))}</td></tr>` : "";
-  // ---- 一句話結論
-  const bullets = HZ.map((h, i) => {
-    const x = m.horizons[h], c = MC[h] || {}, tr = trend(x.ic_roll);
-    const s1 = x.spread_avg == null ? "資料累積中" : x.spread_avg > 0.002 && (x.spread_win ?? 0) > 0.53 ? `個股排名有參考價值（高分組平均比低分組多賺 ${(x.spread_avg * 100).toFixed(1)}%）` : "個股排名的優勢不明顯";
-    const s2 = c.corr == null ? "" : c.corr >= 0.15 ? "；大盤方向判斷有參考價值" : "；大盤方向判斷還沒有勝過「一律猜漲」";
-    const s3 = tr && tr.early > 0.02 && tr.late < 0 ? `；最近 2 個月轉差（預測力由 ${tr.early.toFixed(2)} 降到 ${tr.late.toFixed(2)}），分數已自動降低強度` : x.rel != null && x.rel < 0.4 ? "；近期可信度偏低，分數已自動降低強度" : "";
-    return `<li><span><b>${hzFull(i)}</b>：${s1}${s2}${s3}。</span></li>`;
-  }).join("") + (DM && DM.long ? `<li><span><b>當沖</b>：做多推薦組扣成本後勝率 ${P(DM.long.win, 1)}（${ok(DM.long) ? "有優勢" : "無優勢"}）、做空推薦組 ${P(DM.short && DM.short.win, 1)}（${ok(DM.short) ? "有優勢" : "無優勢"}）。</span></li>` : "");
-  // ---- 自動優化
+  const line = (icon, cl, title, text) => `<li class="cl ${cl}"><i>${icon}</i><span><b>${title}</b>${text}</span></li>`;
+  // ---- 結論卡
+  const cards = HZ.map((h, i) => {
+    const x = m.horizons[h], c = MC[h] || {}, tr = trend(x.ic_roll), d = HZ_SHORT[i];
+    const lines = [];
+    if (x.spread_avg == null) lines.push(line("…", "", "選股：", "資料累積中。"));
+    else {
+      const good = x.spread_avg > 0.002 && (x.spread_win ?? 0) > 0.53;
+      const lvl = !good ? "沒什麼用" : (x.spread_win >= 0.65 ? "有用" : "有一點用");
+      lines.push(line(good ? "✓" : "✗", good ? "ok" : "no", `選股${lvl}：`, `分數高的股票，${d}後平均比分數低的${x.spread_avg >= 0 ? "多賺" : "少賺"} ${Math.abs(x.spread_avg * 100).toFixed(1)}%，${tenTimes(x.spread_win)}。`));
+    }
+    if (c.call_hit != null && c.base_up != null) {
+      const base = Math.max(c.base_up, 1 - c.base_up), up = c.base_up >= 0.5;
+      const better = c.call_hit > base;
+      lines.push(line(better ? "✓" : "✗", better ? "ok" : "no", better ? "看大盤有用：" : `看大盤還不如直接猜「${up ? "會漲" : "會跌"}」：`,
+        better ? `模型猜對 ${P(c.call_hit)}，比一律猜${up ? "漲" : "跌"}（${P(base)}）準。` : `這段期間大盤大多在${up ? "漲" : "跌"}，一律猜${up ? "漲" : "跌"}就能猜對 ${P(base)}，模型只猜對 ${P(c.call_hit)}。`));
+    }
+    if (tr && tr.early > 0.02 && tr.late < 0) lines.push(line("!", "warn", "最近變不準了：", "最近 2 個月常猜反，所以分數先調得保守（多半在 40～60 分）。"));
+    else if (x.rel != null && x.rel < 0.4) lines.push(line("!", "warn", "最近不太準：", "所以分數先調得保守（多半在 40～60 分）。"));
+    else if (x.rel != null) lines.push(line("✓", "ok", "最近表現穩定：", "分數照常顯示。"));
+    return `<div class="concl"><h3>${HZ_NAME[i]}<small>預測未來 ${d}</small></h3><ul>${lines.join("")}</ul><p class="note">目前做法：${esc(cfgName("main", h))}</p></div>`;
+  });
+  if (DM && DM.long) {
+    cards.push(`<div class="concl"><h3>當沖<small>隔天開盤買、收盤賣</small></h3><ul>
+      ${line(ok(DM.long) ? "✓" : "✗", ok(DM.long) ? "ok" : "no", `先買後賣${ok(DM.long) ? "有優勢" : "沒有優勢"}：`, `照分數做，扣掉手續費和稅後有 ${P(DM.long.win)} 的機會賺錢，平均每筆 ${R(DM.long.avg)}。`)}
+      ${DM.short ? line(ok(DM.short) ? "✓" : "✗", ok(DM.short) ? "ok" : "no", `先賣後買${ok(DM.short) ? "有一點優勢" : "沒有優勢"}：`, `照分數做，扣掉成本後有 ${P(DM.short.win)} 的機會賺錢，平均每筆 ${R(DM.short.avg)}。`) : ""}
+      </ul><p class="note">目前做法：${esc(cfgName("dt"))}</p></div>`);
+  }
+  // ---- 自我調整
   const tuneTable = (rows, title) => {
     if (!rows || !rows.length) return `<div><h3>${title}</h3><p class="note">資料累積中</p></div>`;
-    const top = rows.slice(0, 5);
+    const top = rows.slice(0, 4);
     const fixed = rows.find((r) => r.sk >= 1e11);
     if (fixed && !top.includes(fixed)) top.push(fixed);
     const mx = Math.max(0.01, ...rows.map((r) => Math.abs(r.score || 0)));
-    return `<div><h3>${title}</h3><table class="tbl tune"><thead><tr><th>調整方式</th><th>綜合</th><th>整體</th><th>近期</th></tr></thead><tbody>
-      ${top.map((r) => `<tr class="${r.chosen ? "on" : ""}"><td class="txt">${r.chosen ? "✓ " : ""}${esc(r.name)}<div class="tbar"><i class="${(r.score || 0) >= 0 ? "u" : "d"}" style="width:${Math.abs(r.score || 0) / mx * 100}%"></i></div></td><td>${IC(r.score)}</td><td>${IC(r.all)}</td><td>${IC(r.recent)}</td></tr>`).join("")}
+    const lab = (x) => { const a = accLabel(x); return `<span class="${a.c}" title="${x == null ? "" : "一致程度 " + x.toFixed(3)}">${a.t}</span>`; };
+    return `<div><h3>${title}</h3><table class="tbl tune"><thead><tr><th>做法</th><th>整體</th><th>最近</th></tr></thead><tbody>
+      ${top.map((r) => `<tr class="${r.chosen ? "on" : ""}"><td class="txt">${r.chosen ? "✓ " : ""}${esc(r.name)}<div class="tbar"><i class="${(r.score || 0) >= 0 ? "g" : "b"}" style="width:${Math.abs(r.score || 0) / mx * 100}%"></i></div></td><td>${lab(r.all)}</td><td>${lab(r.recent)}</td></tr>`).join("")}
       </tbody></table></div>`;
   };
   const EV = (tu && tu.eval) || {};
@@ -1026,64 +1038,63 @@ async function vCheck(tok) {
   const PART_NAME = { short: "短期", mid: "中期", long: "長期", dt: "當沖" };
   // ---- 各期間詳細
   const sections = HZ.map((h, i) => {
-    const c = MC[h], x = m.horizons[h], rc = x.recent, mr = MR[h] || {};
-    const mEdge = c && c.call_hit != null && c.base_up != null ? c.call_hit - Math.max(c.base_up, 1 - c.base_up) : null;
+    const c = MC[h], x = m.horizons[h], rc = x.recent, mr = MR[h] || {}, d = HZ_SHORT[i];
     const mv = verdictOf(c ? c.corr : null, 0.15, 0, "整體");
-    const sv = verdictOf(x.rel_ic, 0.03, 0, "近期");
-    return `<section class="card section"><div class="card-h"><h2>${HZ_NAME[i]}<span class="note" style="margin-left:8px">${HZ_SPAN[i]}</span></h2></div>
+    const sv = verdictOf(x.rel_ic, 0.03, 0, "最近");
+    const base = c && c.base_up != null ? Math.max(c.base_up, 1 - c.base_up) : null;
+    return `<section class="card section"><div class="card-h"><h2>${HZ_NAME[i]}：預測未來 ${d}<span class="note" style="margin-left:8px">約 ${[5, 20, 60][i]} 個交易日</span></h2></div>
     <div class="grid g2">
-      <div><div class="card-h" style="margin:0 0 6px"><h3>個股分數 vs 之後實際漲跌</h3><span class="pill ${sv.c} sm">${sv.t}</span></div>
-        ${x.top_hit != null ? `<div class="kv"><div><span>分數前 20% 上漲比例</span><b>${P(x.top_hit, 1)}</b><span class="note">全市場 ${P(x.base_hit, 1)}</span></div>
-          <div><span>分數後 20% 下跌比例</span><b>${P(x.bot_fall, 1)}</b><span class="note">全市場 ${P(x.base_fall, 1)}</span></div>
-          <div><span>前 20% 比後 20% 平均多賺</span><b>${R(x.spread_avg)}</b><span class="note">${x.spread_win != null ? P(x.spread_win) + " 的日子成立" : ""}</span></div>
-          <div><span>最近可信度</span><b><span class="pill ${relInfo(x.rel).c} sm">${relInfo(x.rel).t}</span></b><span class="note">近期相關係數 ${x.rel_ic ?? "—"}</span></div></div>
-          <p class="note" style="margin:8px 0 0">統計期間 ${x.eval_days} 個交易日，每天只用當時已知的資料打分。</p>` : '<p class="note">資料累積中</p>'}
+      <div><div class="card-h" style="margin:0 0 6px"><h3>選股準不準</h3><span class="pill ${sv.c} sm">${sv.t}</span></div>
+        ${x.top_hit != null ? `<div class="kv"><div><span>分數最高的 2 成股票，${d}後上漲的比例</span><b>${P(x.top_hit, 1)}</b><span class="note">全部股票是 ${P(x.base_hit, 1)}</span></div>
+          <div><span>分數最低的 2 成股票，${d}後下跌的比例</span><b>${P(x.bot_fall, 1)}</b><span class="note">全部股票是 ${P(x.base_fall, 1)}</span></div>
+          <div><span>高分股比低分股平均多賺</span><b>${R(x.spread_avg)}</b><span class="note">${tenTimes(x.spread_win)}</span></div>
+          <div><span>最近準不準</span><b><span class="pill ${relInfo(x.rel).c} sm">${relInfo(x.rel).t === "低" ? "不太準" : relInfo(x.rel).t === "中" ? "普通" : "準"}</span></b><span class="note">${{ "猜反了": "最近常猜反", "沒差別": "最近分數和漲跌幾乎沒關係", "略有用": "最近略有幫助", "有用": "最近有幫助", "很準": "最近很準", "資料不足": "資料不足" }[accLabel(x.rel_ic).t]}</span></div></div>
+          <p class="note" style="margin:8px 0 0">統計了 ${x.eval_days} 個交易日，每天都只用當天以前的資料打分數。</p>` : '<p class="note">資料累積中</p>'}
         <div class="grid g2" style="margin-top:14px">
-          <div><h3>分數高低與實際上漲比例</h3><p class="note" style="margin:2px 0 8px">左＝分數最低 10%，右＝最高 10%；越往右越高代表分數越有用</p><div class="chart" id="cal${i}"></div></div>
-          <div><h3>預測力變化</h3><p class="note" style="margin:2px 0 8px">分數排名與實際報酬的相關性（20 日平均），大於 0 代表有效</p><div class="chart" id="ic${i}"></div></div>
+          <div><h3>分數高低 vs 真的上漲的比例</h3><p class="note" style="margin:2px 0 8px">左邊是分數最低的一成、右邊是最高的一成；越往右越高，代表分數越有用（最近約 3 個月）</p><div class="chart" id="cal${i}"></div></div>
+          <div><h3>準確度的變化</h3><p class="note" style="margin:2px 0 8px">線在 0 以上＝分數有用；掉到 0 以下＝那段時間猜反了</p><div class="chart" id="ic${i}"></div></div>
         </div>
-        ${rc ? `<h3 style="margin-top:16px">最近一次對答案：${dayFull(rc.from)} 的分數 → ${dayFull(rc.to)}</h3>
-          <p class="note" style="margin:2px 0 8px">日均成交 1 億元以上的股票中，當天分數最高與最低各 10 檔，到今天的實際漲跌。同期間加權指數 ${R(rc.taiex)}、全部股票平均 ${R(rc.all_avg)}。</p>
-          <div class="grid g2 rcgrid"><div><div class="rch up">分數最高 10 檔　平均 ${R(rc.top_avg)}<span class="note">　${rc.top_up}/10 檔上漲</span></div>
+        ${rc ? `<h3 style="margin-top:16px">最近一次對答案：${dayFull(rc.from)} 的分數，到 ${dayFull(rc.to)} 的結果</h3>
+          <p class="note" style="margin:2px 0 8px">在每天成交 1 億元以上的股票中，挑出當天分數最高和最低的各 10 檔，看到今天實際漲跌多少。同期間大盤 ${R(rc.taiex)}、全部股票平均 ${R(rc.all_avg)}。</p>
+          <div class="grid g2 rcgrid"><div><div class="rch up">分數最高的 10 檔　平均 ${R(rc.top_avg)}<span class="note">　${rc.top_up} 檔上漲</span></div>
             <ul class="rcl">${rc.top.map((r) => `<li><a href="#/stock/${r.c}">${esc(r.n)}</a><span class="num">${R(r.r, 1)}</span></li>`).join("")}</ul></div>
-            <div><div class="rch dn">分數最低 10 檔　平均 ${R(rc.bot_avg)}<span class="note">　${rc.bot_dn}/10 檔下跌</span></div>
+            <div><div class="rch dn">分數最低的 10 檔　平均 ${R(rc.bot_avg)}<span class="note">　${rc.bot_dn} 檔下跌</span></div>
             <ul class="rcl">${rc.bot.map((r) => `<li><a href="#/stock/${r.c}">${esc(r.n)}</a><span class="num">${R(r.r, 1)}</span></li>`).join("")}</ul></div></div>
-          <p class="note" style="margin:6px 0 0">${rc.top_avg > rc.bot_avg ? `這一次：高分組比低分組多賺 ${((rc.top_avg - rc.bot_avg) * 100).toFixed(1)} 個百分點，方向正確。` : `這一次：高分組反而比低分組少賺 ${((rc.bot_avg - rc.top_avg) * 100).toFixed(1)} 個百分點，方向錯誤。`}單次結果運氣成分大，請以長期統計為準。</p>` : ""}
+          <p class="note" style="margin:6px 0 0">${rc.top_avg > rc.bot_avg ? `這一次猜對了：高分組比低分組多賺 ${((rc.top_avg - rc.bot_avg) * 100).toFixed(1)} 個百分點。` : `這一次猜錯了：高分組反而比低分組少賺 ${((rc.bot_avg - rc.top_avg) * 100).toFixed(1)} 個百分點。`}單一次的結果運氣成分很大，請以上面的長期統計為準。</p>` : ""}
       </div>
-      <div><div class="card-h" style="margin:0 0 6px"><h3>大盤分數 vs 之後實際漲跌</h3><span class="pill ${mv.c} sm">${mv.t}</span></div>
-        ${c && c.n ? `<p style="margin:0 0 6px">過去 ${c.n} 個交易日：分數偏多（55 分以上）的 <b>${c.bull_n}</b> 天，之後 ${H_D[i]} 大盤真的上漲 <b class="num">${P(c.bull_hit)}</b>；分數偏空（45 分以下）的 <b>${c.bear_n}</b> 天，之後真的下跌 <b class="num">${P(c.bear_hit)}</b>。</p>
-        <p class="note" style="margin:0 0 6px">對照：同期間隨便挑一天，${H_D[i]}後上漲的機率是 ${P(c.base_up)}。${mEdge != null ? (mEdge > 0 ? `判斷比「一律猜多」準 ${(mEdge * 100).toFixed(0)} 個百分點。` : `判斷還<b>沒有</b>比「一律猜${c.base_up >= 0.5 ? "多" : "空"}」準（差 ${(Math.abs(mEdge) * 100).toFixed(0)} 個百分點），代表這段期間大盤方向主要由趨勢主導。`) : ""}分數與實際漲跌的相關係數 ${c.corr ?? "—"}。</p>
-        <p class="note" style="margin:0 0 6px">目前可信度 <span class="pill ${relInfo(mr.rel).c} sm">${relInfo(mr.rel).t}</span>${mr.raw != null && Math.abs(mr.raw - mr.score) >= 1 ? `：模型原始讀數 ${Math.round(mr.raw)} 分，因可信度不足收斂為 ${Math.round(mr.score)} 分。` : ""}</p>
-        <div class="chart" id="mc${i}"></div><p class="note" style="margin:4px 0 0">金線＝當時的大盤分數；柱子＝之後 ${H_D[i]} 的實際漲跌；底部金點＝猜對、灰點＝猜錯（只計 55 分以上或 45 分以下的日子）。</p>` : '<p class="note">資料累積中</p>'}
+      <div><div class="card-h" style="margin:0 0 6px"><h3>看大盤準不準</h3><span class="pill ${mv.c} sm">${mv.t}</span></div>
+        ${c && c.n ? `<p style="margin:0 0 6px">過去 ${c.n} 個交易日裡，模型說「偏多」（55 分以上）的有 <b>${c.bull_n}</b> 天，${d}後大盤真的漲的占 <b class="num">${P(c.bull_hit)}</b>；說「偏空」（45 分以下）的有 <b>${c.bear_n}</b> 天，${d}後真的跌的占 <b class="num">${P(c.bear_hit)}</b>。</p>
+        <p class="note" style="margin:0 0 6px">對照：這段期間隨便挑一天，${d}後大盤上漲的機率是 ${P(c.base_up)}。${base != null ? (c.call_hit > base ? `模型比「一律猜${c.base_up >= 0.5 ? "漲" : "跌"}」準一些。` : `所以模型看大盤，還沒有比「一律猜${c.base_up >= 0.5 ? "漲" : "跌"}」準；這段期間大盤主要是順著趨勢走。`) : ""}</p>
+        ${mr.raw != null && Math.abs(mr.raw - mr.score) >= 1 ? `<p class="note" style="margin:0 0 6px">今天：模型原本算出 ${Math.round(mr.raw)} 分，但最近不太準，所以調成 ${Math.round(mr.score)} 分。</p>` : ""}
+        <div class="chart" id="mc${i}"></div><p class="note" style="margin:4px 0 0">金線＝當時的大盤分數；紅綠柱＝之後 ${d}大盤實際漲跌；底部金點＝猜對、灰點＝猜錯（只算 55 分以上或 45 分以下的日子）。</p>` : '<p class="note">資料累積中</p>'}
       </div>
     </div></section>`;
   }).join("");
-  const dtSec = DM ? `<section class="card section"><div class="card-h"><h2>當沖<span class="note" style="margin-left:8px">下一個交易日開盤進、收盤出，已扣來回成本</span></h2><a class="more" href="#/daytrade">看當沖名單</a></div>
+  const dtSec = DM ? `<section class="card section"><div class="card-h"><h2>當沖：隔天開盤買、收盤賣<span class="note" style="margin-left:8px">已扣手續費和稅</span></h2><a class="more" href="#/daytrade">看當沖名單</a></div>
     <div class="grid g3">
-      <div><div class="kv"><div><span>做多：分數前 10%</span><b>${P(DM.long && DM.long.win, 1)}</b><span class="note">平均每筆 ${R(DM.long && DM.long.avg)}・${ok(DM.long) ? "有優勢" : "無優勢"}</span></div>
-        <div><span>做空：分數後 10%</span><b>${P(DM.short && DM.short.win, 1)}</b><span class="note">平均每筆 ${R(DM.short && DM.short.avg)}・${ok(DM.short) ? "有優勢" : "無優勢"}</span></div>
-        <div><span>隨機做多的勝率</span><b>${P(DM.base_win, 1)}</b><span class="note">對照組</span></div></div>
-        <p class="note" style="margin:8px 0 0">最近 ${DM.eval_days} 個交易日；分數最高與最低兩組隔天表現平均相差 ${DM.spread_avg != null ? (DM.spread_avg * 100).toFixed(2) + "%" : "—"}，在 ${P(DM.spread_win)} 的日子成立。</p></div>
-      <div><h3>分數高低與隔天做多勝率</h3><p class="note" style="margin:2px 0 8px">左＝分數最低，右＝最高；虛線是隨機做多的勝率</p><div class="chart" id="dtcal"></div></div>
-      <div><h3>預測力變化</h3><p class="note" style="margin:2px 0 8px">分數排名與隔天盤中報酬的相關性（20 日平均）</p><div class="chart" id="dtic"></div></div>
+      <div><div class="kv"><div><span>照分數先買後賣（分數最高一成）</span><b>${P(DM.long && DM.long.win, 1)}</b><span class="note">賺錢的機會・平均每筆 ${R(DM.long && DM.long.avg)}</span></div>
+        <div><span>照分數先賣後買（分數最低一成）</span><b>${P(DM.short && DM.short.win, 1)}</b><span class="note">賺錢的機會・平均每筆 ${R(DM.short && DM.short.avg)}</span></div>
+        <div><span>隨便挑股票先買後賣（對照）</span><b>${P(DM.base_win, 1)}</b><span class="note">賺錢的機會</span></div></div>
+        <p class="note" style="margin:8px 0 0">統計最近 ${DM.eval_days} 個交易日。</p></div>
+      <div><h3>分數高低 vs 先買後賣賺錢的機會</h3><p class="note" style="margin:2px 0 8px">左邊分數最低、右邊最高；虛線是隨便挑股票的結果</p><div class="chart" id="dtcal"></div></div>
+      <div><h3>準確度的變化</h3><p class="note" style="margin:2px 0 8px">線在 0 以上＝分數有用；掉到 0 以下＝那段時間猜反了</p><div class="chart" id="dtic"></div></div>
     </div></section>` : "";
   view.innerHTML = `<h1 class="grad">實測對答案</h1>
-  <p class="lead">把模型每一天「當時算出來的分數」拿去和之後真正的漲跌比對，全部只用當時已知的資料（不偷看未來）。每天收盤更新後自動重算，並依結果自動調整模型。資料期間 ${dayFull(m.first_day)}～${dayFull(m.last_day)}。</p>
-  <section class="card glow"><span class="glow-ring"></span><div class="card-h"><h2>總表</h2><span class="note">紅字＝比對照組好</span></div>
-    <div class="tbl-wrap"><table class="tbl sumtbl"><thead><tr><th>期間</th><th>個股：分數前 20% 上漲比例</th><th>前 20% 比後 20% 多賺</th><th>大盤方向</th><th>最近可信度${help("rel")}</th><th style="text-align:left">目前採用的調整方式</th></tr></thead><tbody>${rowsHz}${rowDt}</tbody></table></div>
-    <h3 style="margin-top:16px">一句話結論</h3><ul class="facts" style="margin-top:6px">${bullets}</ul>
-    <p class="note" style="margin:10px 0 0">股市短期走勢本來就很難預測，專業量化模型的相關係數通常也只有 0.02～0.08。這頁的目的是讓你知道「哪些分數現在比較可信」，可信度低時請保守看待。</p></section>
-  <section class="card section"><div class="card-h"><h2>依實測自動優化</h2>${help("tune")}<span class="note">${tu && tu.eval_day ? "最近一次比較：" + dayFull(tu.eval_day) : ""}</span></div>
-    <p style="margin:0 0 6px">每天收盤後，模型會把幾種「權重調整方式」各自重跑一遍過去的歷史（每種都只用當時已知的資料），比較分數和之後實際漲跌的相關係數，自動採用最準的一種（✓）。新方式要明顯比較好才會更換，避免每天換來換去。</p>
-    <p class="note" style="margin:0 0 12px">數字是相關係數：0 代表分數和實際漲跌無關，越高越準；「綜合」較看重最近的表現。</p>
+  <p class="lead">這頁回答一個問題：<b>分數到底準不準？</b>做法是把過去每一天算出來的分數，拿去跟後來真正的漲跌對答案（當時只用當天以前的資料，不作弊）。每天收盤後自動更新。資料期間 ${dayFull(m.first_day)}～${dayFull(m.last_day)}。</p>
+  <section class="card glow"><span class="glow-ring"></span><div class="card-h"><h2>結論</h2><span class="note">✓ 有用　✗ 沒用　! 要注意</span></div>
+    <div class="grid g2 concls">${cards.join("")}</div>
+    <p class="note" style="margin:12px 0 0">股價短期漲跌本來就很難預測，就算是專業機構的模型，也只是「比亂猜好一點」。這頁幫你看出哪些分數現在比較能參考；標示「不太準」的時候，請保守看待。</p></section>
+  <section class="card section"><div class="card-h"><h2>模型每天自我調整</h2>${help("tune")}<span class="note">${tu && tu.eval_day ? "最近一次：" + dayFull(tu.eval_day) : ""}</span></div>
+    <p style="margin:0 0 6px">每天收盤後，模型會試好幾種計分做法——主要差在「各項指標的比重，要不要、要多快跟著最近的表現改」——用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種（打 ✓ 的）。新做法要明顯比較好才會換，避免天天換來換去。</p>
+    <p class="note" style="margin:0 0 12px">「整體」看過去一年，「最近」看最近幾個月；金色長條越長越準，灰色代表反而猜反了。</p>
     <div class="grid g2">${tuneTable(EV.main && EV.main.short, "短期（1 週）")}${tuneTable(EV.main && EV.main.mid, "中期（1 個月）")}${tuneTable(EV.main && EV.main.long, "長期（3 個月）")}${tuneTable(EV.dt, "當沖")}</div>
     <h3 style="margin-top:16px">調整紀錄</h3>
-    ${logs.length ? `<ul class="rcl">${logs.map((l) => `<li><span>${dayFull(l.day)}　${PART_NAME[l.hn] || ""}：${l.from ? `由「${esc(l.from)}」改為` : "採用"}「${esc(l.to)}」</span><span class="note">${l.gain != null ? "相關係數 +" + l.gain.toFixed(3) : ""}</span></li>`).join("")}</ul>` : '<p class="note">尚無調整紀錄。</p>'}
-    ${histDays.length >= 5 ? `<h3 style="margin-top:16px">每天的比較結果</h3><p class="note" style="margin:2px 0 8px">金線＝採用的方式，灰線＝固定預設權重（對照組）；金線在上代表依實測調整確實有幫助</p><div class="grid g2" id="tuneh"></div>` : `<p class="note" style="margin-top:10px">每天的比較結果會逐日累積（目前 ${histDays.length} 天），累積 5 天後這裡會出現走勢圖。</p>`}
+    ${logs.length ? `<ul class="rcl">${logs.map((l) => `<li><span>${dayFull(l.day)}　${PART_NAME[l.hn] || ""}：${l.from ? `由「${esc(l.from)}」改為` : "開始採用"}「${esc(l.to)}」</span></li>`).join("")}</ul>` : '<p class="note">還沒有調整過。</p>'}
+    ${histDays.length >= 5 ? `<h3 style="margin-top:16px">每天的比較結果</h3><p class="note" style="margin:2px 0 8px">金線＝採用的做法，灰虛線＝固定比重（對照）；金線比灰線高，代表調整真的有幫助</p><div class="grid g2" id="tuneh"></div>` : `<p class="note" style="margin-top:10px">每天的比較結果會一天天累積（目前 ${histDays.length} 天），滿 5 天後這裡會出現走勢圖。</p>`}
   </section>
   ${sections}
   ${dtSec}
-  <p class="disclaimer">回測結果代表過去，不保證未來。上漲／下跌比例用重疊的期間計算（例如每天都算之後 20 天），實際獨立樣本比天數少，數字會有誤差。自動優化是用同一段歷史挑設定，挑中的設定在這段歷史上的成績會略為樂觀。</p>`;
+  <p class="disclaimer">以上都是過去的成績，不保證未來。因為每天都算「之後 1 週、1 個月、3 個月」這類互相重疊的期間，真正獨立的樣本比天數少，數字會有誤差。另外，自我調整是用同一段歷史挑出最好的做法，所以這段歷史的成績會稍微好看一點。</p>`;
   const draw = () => {
     HZ.forEach((h, i) => {
       const c = MC[h], x = m.horizons[h];
@@ -1098,10 +1109,7 @@ async function vCheck(tok) {
     const th = $("#tuneh");
     if (th) {
       th.innerHTML = ["short", "mid", "long", "dt"].map((p) => `<div><h3>${PART_NAME[p]}</h3><div class="chart" id="th_${p}"></div></div>`).join("");
-      ["short", "mid", "long", "dt"].forEach((p) => {
-        const hs = hist.filter((x) => x.hn === p);
-        tuneChart($("#th_" + p), hs);
-      });
+      ["short", "mid", "long", "dt"].forEach((p) => tuneChart($("#th_" + p), hist.filter((x) => x.hn === p)));
     }
   };
   draw(); onResize(() => location.hash === "#/check" && draw());
@@ -1129,17 +1137,23 @@ async function vHelp(tok) {
   view.innerHTML = `<h1>使用說明</h1>
   <div class="grid g2">
     <section class="card"><h2>分數怎麼看</h2>
-      <p>每檔股票有短期（約 1 週）、中期（約 1 個月）、長期（約 3 個月）三個分數，0～100 分，50 分是中立。</p>
+      <p>每檔股票有三個分數，分別預測不同長度的未來：<b>短期＝1 週</b>（約 5 個交易日）、<b>中期＝1 個月</b>（約 20 個交易日）、<b>長期＝3 個月</b>（約 60 個交易日）。分數 0～100，50 分代表看不出方向。</p>
       <div class="bars" style="margin:10px 0">${[[85, "75 分以上：強烈看多"], [65, "60～75：偏多"], [50, "40～60：中立"], [33, "25～40：偏空"], [15, "25 分以下：強烈看空"]].map(([s, t]) => `<div class="b"><span>${pill(s)}</span><span>${t}</span><span></span></div>`).join("")}</div>
-      <p>分數由約 35 個指標組成：漲勢與均線（技術面）、外資投信買賣與融資（籌碼面）、營收與本益比（基本面）、新聞與重大訊息的利多利空（消息面），再加上大盤氣氛。大盤氣氛除了台股本身，也看美股（費城半導體、那斯達克、標普 500）、台積電 ADR、恐慌指數 VIX、美債殖利率、美元與新台幣匯率。</p>
-      <p>每個分數都有「可信度」：模型每天事後對答案，最近若不準，分數會自動往 50 收斂。到「實測對答案」可以看分數和實際漲跌比對的結果。</p>
-      <p>關鍵在於<b>權重不是固定的</b>：每天收盤後，模型會檢查每個指標過去預測得準不準，準的加重、失靈的減輕，所以判斷會隨行情自動修正。「模型成績單」可以看到它最近的表現。</p>
+      <p>分數綜合約 35 項指標，分成五類：</p>
+      <ul class="facts" style="margin:4px 0 10px">
+        <li><span><b>股價走勢</b>：最近漲跌、有沒有站上平均價、量能變化。</span></li>
+        <li><span><b>大戶動向</b>：外資、投信有沒有在買，散戶有沒有借錢追高。</span></li>
+        <li><span><b>公司體質</b>：營收成長、賺錢能力、股價貴不貴。</span></li>
+        <li><span><b>新聞消息</b>：最近的新聞和公司公告偏好消息還是壞消息。</span></li>
+        <li><span><b>大盤與國外</b>：台股大盤氣氛，以及美股、台積電在美國的股價、匯率、美國利率。</span></li>
+      </ul>
+      <p><b>它會自己檢討：</b>每天收盤後，拿過去的分數和真正的漲跌對答案。最近常猜錯，就降低「可信度」、把分數調得保守；也會比較幾種計分做法，改用最準的那一種。結果都在「實測對答案」頁。</p>
     </section>
     ${st.static ? `<section class="card"><h2>雲端版（不用開電腦）</h2>
       <p>你現在看的是雲端版，資料每個交易日由雲端自動更新，電腦不用開。</p>
       <p>用手機瀏覽器打開這個網址，在選單點「加到主畫面」，就能像 App 一樣使用。這個網址不會被搜尋引擎收錄，請不要公開分享。</p>
       <h2 style="margin-top:18px">資料何時更新</h2>
-      <p>每個交易日下午 3 點 40 分（收盤行情、法人）與晚上 9 點 50 分（融資融券）各更新一次，更新完約 10 分鐘內網頁就會換成新資料。</p>
+      <p>每個交易日更新兩次：下午 3 點 40 分（收盤價、法人買賣、新聞）和晚上 9 點 50 分（融資融券）。更新完大約 10 分鐘內，網頁就會換成新資料。</p>
       <p class="note">雲端版的自選股存在這支手機（或這個瀏覽器）裡，和電腦版的自選不互通。</p>
     </section>` : `<section class="card"><h2>在手機上使用</h2>
       <p>電腦開著台股羅盤時，手機連上<b>同一個 Wi-Fi</b>，用瀏覽器開啟：</p>
@@ -1151,7 +1165,7 @@ async function vHelp(tok) {
     </section>`}
   </div>
   <section class="card section"><h2>權證怎麼挑</h2>
-    <p>權證推薦度同時考量兩件事：權證本身划不划算（價格是否合理、買賣價差、剩餘天數、價內外、每天的時間價值損耗、槓桿），以及標的股票的看多／看空分數。看漲選認購、看跌選認售。表格的每一欄旁邊都有 <span class="help" style="cursor:default">?</span> 可以看白話解釋。</p>
+    <p>看漲買「認購」、看跌買「認售」。推薦度同時看兩件事：一是權證本身划不划算（價格貴不貴、買賣價差、剩幾天到期、每天耗損多少、槓桿大小），二是股票本身看漲還是看跌。表格每一欄旁邊的 <span class="help" style="cursor:default">?</span> 都有白話解釋。</p>
   </section>
   ${disclaimer}`;
 }
@@ -1172,7 +1186,7 @@ function renderOnboarding() {
   const st = S.status || {};
   const pct = st.total ? Math.min(100, Math.round(st.done / st.total * 100)) : 0;
   const order = ["collect", "snapshot", "engine", "backfill"];
-  const names = { collect: "下載最近 70 個交易日的行情、法人、融資", snapshot: "下載基本面、權證條款與行情", engine: "分析：檢驗指標、調整權重、算分數", backfill: "背景補齊更早的歷史資料" };
+  const names = { collect: "下載最近 70 個交易日的股價、法人買賣、融資", snapshot: "下載公司營收獲利、權證、新聞與國外行情", engine: "分析：對答案、自我調整、算分數", backfill: "在背景補齊更早的歷史資料" };
   const cur = order.indexOf(st.phase);
   const running = st.running || st.state === "running";
   view.innerHTML = `<div class="card empty glow" style="max-width:660px;margin:36px auto"><span class="glow-ring"></span>
