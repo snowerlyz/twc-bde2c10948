@@ -200,6 +200,8 @@ def analyze(prog=None):
     res["model"]["market_check"] = mkt.get("check")
     res["model"]["market_rel"] = {hn: {k: mkt["horizons"][hn].get(k) for k in ("raw", "rel", "rel_corr", "score", "base_up")} for hn in HN}
     write_json(os.path.join(RESULTS, "model.json"), res["model"])
+    write_json(os.path.join(DB, "ml_status.json"), {"day": D.days[-1], "ml": res["model"].get("ml"),
+                                                    "ic": {hn: res["model"]["horizons"][hn].get("ic_avg") for hn in HN}})
     tun = read_json(os.path.join(DB, "tuning.json"), {}) or {}
     write_json(os.path.join(RESULTS, "tuning.json"), tun)
     snapinfo = read_json(os.path.join(DB, "snapshot", "info.json"), {}) or {}
