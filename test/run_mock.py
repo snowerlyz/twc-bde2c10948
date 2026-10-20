@@ -1,6 +1,6 @@
 import os, sys, json, time
 os.environ.setdefault("TWC_DATA", "/tmp/twc_test_data")
-sys.path.insert(0, "/home/claude/twcompass/app"); sys.path.insert(0, "/home/claude/twcompass/test")
+_here = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, os.path.join(_here, "..", "app")); sys.path.insert(0, _here)
 import util
 util.HOST_GAP.clear()
 import mock, collector
