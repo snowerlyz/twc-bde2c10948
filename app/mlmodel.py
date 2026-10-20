@@ -68,10 +68,12 @@ def blend(store, fstore, pct_hist, H, keys, say=None):
                         m = ~np.isnan(y)
                         Xs.append(X[m])
                         Ys.append(y[m])
-                    model = lgb.LGBMRegressor(n_estimators=150, learning_rate=0.03, num_leaves=15,
-                                              min_child_samples=200, subsample=0.7, subsample_freq=1,
-                                              colsample_bytree=0.7, reg_lambda=5.0, verbose=-1, n_jobs=2)
-                    model.fit(np.vstack(Xs), np.concatenate(Ys))
+                    # 用 lightgbm 原生介面（不需要 scikit-learn）
+                    params = {"objective": "regression", "learning_rate": 0.03, "num_leaves": 15,
+                              "min_data_in_leaf": 200, "bagging_fraction": 0.7, "bagging_freq": 1,
+                              "feature_fraction": 0.7, "lambda_l2": 5.0, "verbose": -1, "num_threads": 2,
+                              "seed": 7, "deterministic": True}
+                    model = lgb.train(params, lgb.Dataset(np.vstack(Xs), np.concatenate(Ys)), num_boost_round=150)
                     last_train = t
                     if say:
                         say("機器學習模型：%s 第 %d 天重新訓練" % (hn, t))
