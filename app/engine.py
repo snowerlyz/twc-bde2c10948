@@ -91,6 +91,9 @@ FKEYS = [f[0] for f in FACTORS]
 FNAME = {f[0]: f[1] for f in FACTORS}
 FGROUP = {f[0]: f[2] for f in FACTORS}
 FPRIOR = {f[0]: dict(zip(HN, f[3])) for f in FACTORS}
+if os.environ.get("TWC_PRIOR_OVERRIDE"):      # 只在研究測試時使用
+    for _k, _v in json.loads(os.environ["TWC_PRIOR_OVERRIDE"]).items():
+        FPRIOR[_k] = dict(zip(HN, _v))
 NF = len(FACTORS)
 
 
