@@ -130,7 +130,16 @@ def analyze(prog=None):
         write_json(os.path.join(RESULTS, "global.json"), glob_res)
         write_json(os.path.join(RESULTS, "report.json"), report)
     except Exception as e:
+        sec_res = None
         log("類股／國際分析失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 前瞻實測：存下今天的預測，並替以前存的預測對答案
+    try:
+        import predlog as _pl
+        importlib.reload(_pl)
+        _pl.save(D, res, stocks, dt, (sec_res or {}).get("sectors"))
+        write_json(os.path.join(RESULTS, "live.json"), _pl.evaluate(D, A_all))
+    except Exception as e:
+        log("前瞻實測失敗：%s\n%s" % (e, traceback.format_exc()))
     by_code = {r["c"]: r for r in stocks}
     mkt = res["market"]
 

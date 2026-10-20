@@ -1083,9 +1083,18 @@ async function vCheck(tok) {
       </div>
     </div></section>`;
   }).join("");
-  let SEC = null;
+  let SEC = null, LV = null;
   try { SEC = await api("sectors"); } catch { }
+  try { LV = await api("live"); } catch { }
   const SC = (SEC && SEC.check) || {}, IM = SEC && SEC.impact;
+  const liveSec = LV && LV.start ? `<section class="card section glow"><span class="glow-ring"></span><div class="card-h"><h2>${svgI("target")} 前瞻實測：真正事前預測的成績</h2><span class="note">從 ${dayFull(LV.start)} 開始記錄，已存 ${LV.days} 天</span></div>
+    <p style="margin:0 0 10px">上面的成績是「用過去資料模擬」的；這裡則是每天收盤後把當天的預測<b>原封不動存下來</b>，等時間到了再和真正的漲跌對答案。預測存下時完全不知道未來，之後換模型也不會改動，是判斷模型有沒有真的進步最公正的標準。</p>
+    <div class="grid g2 concls">${HZ.map((h, i) => { const x = LV.h[h] || {}, mk = LV.mkt[h] || {}; if (!x.n) return `<div class="concl"><h3>${HZ_NAME[i]}<small>預測未來 ${HZ_SHORT[i]}</small></h3><p class="note">第一筆結果要等 ${[5, 20, 60][i]} 個交易日（約 ${HZ_SHORT[i]}）後才會出現。</p></div>`; const good = x.spread > 0 && x.win > 0.5; return `<div class="concl"><h3>${HZ_NAME[i]}<small>已對答案 ${x.n} 天</small></h3><ul>
+      <li class="cl ${good ? "ok" : "no"}"><i>${good ? "✓" : "✗"}</i><span><b>選股：</b>高分股比低分股平均${x.spread >= 0 ? "多賺" : "少賺"} ${Math.abs(x.spread * 100).toFixed(2)}%，${x.n} 天裡有 ${Math.round(x.win * x.n)} 天是這樣；準確度：${accLabel(x.ic).t}。</span></li>
+      ${mk.calls ? `<li class="cl ${mk.hit > Math.max(mk.base_up, 1 - mk.base_up) ? "ok" : "no"}"><i>${mk.hit > Math.max(mk.base_up, 1 - mk.base_up) ? "✓" : "✗"}</i><span><b>看大盤：</b>明確表態的 ${mk.calls} 天猜對 ${P(mk.hit)}（一律猜漲是 ${P(mk.base_up)}）。</span></li>` : ""}
+      </ul></div>`; }).join("")}
+      <div class="concl"><h3>當沖<small>隔天開盤買、收盤賣</small></h3>${LV.dt && (LV.dt.long.n || LV.dt.short.n) ? `<ul>${["long", "short"].map((sd) => { const x = LV.dt[sd]; if (!x.n) return ""; const ok2 = x.win > 0.5 && x.avg > 0; return `<li class="cl ${ok2 ? "ok" : "no"}"><i>${ok2 ? "✓" : "✗"}</i><span><b>${sd === "long" ? "先買後賣" : "先賣後買"}推薦：</b>${x.n} 筆裡扣成本後賺錢的有 ${P(x.win)}，平均每筆 ${R(x.avg)}。</span></li>`; }).join("")}</ul>` : '<p class="note">下一個交易日收盤後會出現第一筆結果。</p>'}</div>
+    </div></section>` : "";
   const secCheck = Object.keys(SC).length ? `<section class="card section"><div class="card-h"><h2>${svgI("sector")} 類股分數準不準</h2><a class="more" href="#/sectors">看類股</a></div>
     <p style="margin:0 0 10px">每天依「類股內股票的平均分數」把類股排名，看分數最高的 5 個類股，之後是不是真的比分數最低的 5 個表現好。</p>
     <div class="grid g3">${HZ.map((h, i) => { const c = SC[h]; if (!c) return `<div class="concl"><h3>${HZ_NAME[i]}<small>未來 ${HZ_SHORT[i]}</small></h3><p class="note">資料累積中</p></div>`; const good = c.spread > 0.002 && c.win > 0.53; return `<div class="concl"><h3>${HZ_NAME[i]}<small>未來 ${HZ_SHORT[i]}</small></h3><ul>${`<li class="cl ${good ? "ok" : "no"}"><i>${good ? "✓" : "✗"}</i><span><b>${good ? (c.win >= 0.6 ? "有用" : "有一點用") : "沒什麼用"}：</b>高分類股平均比低分類股${c.spread >= 0 ? "多賺" : "少賺"} ${Math.abs(c.spread * 100).toFixed(1)}%，10 次裡約有 ${Math.round(c.win * 10)} 次是這樣。</span></li>`}</ul><p class="note">統計 ${c.n} 個交易日</p></div>`; }).join("")}</div></section>` : "";
@@ -1120,6 +1129,7 @@ async function vCheck(tok) {
     ${logs.length ? `<ul class="rcl">${logs.map((l) => `<li><span>${dayFull(l.day)}　${PART_NAME[l.hn] || ""}：${l.from ? `由「${esc(l.from)}」改為` : "開始採用"}「${esc(l.to)}」</span></li>`).join("")}</ul>` : '<p class="note">還沒有調整過。</p>'}
     ${histDays.length >= 5 ? `<h3 style="margin-top:16px">每天的比較結果</h3><p class="note" style="margin:2px 0 8px">金線＝採用的做法，灰虛線＝固定比重（對照）；金線比灰線高，代表調整真的有幫助</p><div class="grid g2" id="tuneh"></div>` : `<p class="note" style="margin-top:10px">每天的比較結果會一天天累積（目前 ${histDays.length} 天），滿 5 天後這裡會出現走勢圖。</p>`}
   </section>
+  ${liveSec}
   ${sections}
   ${secCheck}
   ${impSec}

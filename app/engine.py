@@ -28,7 +28,7 @@ HALF_LIFE = json.loads(os.environ["TWC_HL"]) if os.environ.get("TWC_HL") else {"
 CAL_WIN = {"short": 60, "mid": 80, "long": 100}
 SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
-ENGINE_VERSION = 6
+ENGINE_VERSION = 7
 
 
 def isnan(x):
@@ -77,6 +77,11 @@ FACTORS = [
     ("news_sent", "新聞與公告偏好或偏壞", "新聞消息", (0.010, 0.005, 0.000)),
     ("news_cnt", "新聞多寡（近 3 天）", "新聞消息", (0.000, 0.000, 0.000)),
     ("alert", "被列為注意股／處置股", "新聞消息", (-0.005, -0.005, 0.000)),
+    ("max20", "近一個月單日最大漲幅（暴漲股常回吐）", "股價走勢", (-0.005, -0.010, -0.010)),
+    ("turn20", "週轉率（成交量÷股本）", "股價走勢", (0.000, 0.000, 0.000)),
+    ("size", "公司市值大小", "公司體質", (0.000, 0.000, 0.000)),
+    ("ind_mom20", "所屬類股近一個月漲跌", "類股強弱", (0.005, 0.010, 0.010)),
+    ("ind_mom5", "所屬類股近一週漲跌", "類股強弱", (0.005, 0.000, 0.000)),
 ]
 FKEYS = [f[0] for f in FACTORS]
 FNAME = {f[0]: f[1] for f in FACTORS}
@@ -455,6 +460,9 @@ def adjust_series(s):
     return A, traded
 
 
+_SHARES = {}
+
+
 def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
     """回傳 {因子: list(長度 T)}，資料不足處為 NaN。"""
     F = {}
@@ -591,6 +599,18 @@ def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
         F["bpy"][t] = 1.0 / pb if pb and pb > 0 else NAN
         F["yld"][t] = f.get("yld") if f.get("yld") is not None else NAN
         F["om"][t] = _clip(f.get("om"), -100, 100)
+    # 單日最大漲幅、週轉率、市值
+    mx = [NAN] * T
+    for t in range(20, T):
+        w = [x for x in ret[t - 19:t + 1] if not isnan(x)]
+        if len(w) >= 15:
+            mx[t] = max(w)
+    F["max20"] = mx
+    sh = _SHARES.get(code)
+    F["turn20"] = [(v20[t] / sh) if sh and not isnan(v20[t]) else NAN for t in range(T)]
+    F["size"] = [math.log(s["c"][t] * sh) if sh and not isnan(s["c"][t]) and s["c"][t] > 0 else NAN for t in range(T)]
+    F["ind_mom20"] = [NAN] * T      # 類股因子在 run_engine 裡算（需要同類股的其他股票）
+    F["ind_mom5"] = [NAN] * T
     # 消息面：只有在有抓消息的日子才有值（沒有消息＝0，代表「沒有新聞」而非缺資料）
     for k in ("news_sent", "news_cnt", "alert"):
         F[k] = [NAN] * T
@@ -1101,6 +1121,16 @@ def reason_text(k, v, sign):
         return "殖利率 %.2f%%" % v
     if k == "om":
         return "營業利益率 %.1f%%" % v
+    if k == "max20":
+        return "近一個月最大單日漲 %.1f%%%s" % (v * 100, "（暴漲過，容易回吐）" if v >= 0.07 else "") if v >= 0.04 else None
+    if k == "turn20":
+        return "週轉率每天約 %.1f%%（%s）" % (v * 100, "交易熱絡" if v >= 0.02 else "交易清淡" if v < 0.002 else "普通")
+    if k == "size":
+        return "市值約 %s 億元（%s）" % (format(int(math.exp(v) / 1e8), ","), "大型股" if v >= math.log(1e11) else "小型股" if v < math.log(1e10) else "中型股")
+    if k == "ind_mom20":
+        return "所屬類股近一個月%s %.1f%%" % ("上漲" if v >= 0 else "下跌", abs(v) * 100)
+    if k == "ind_mom5":
+        return "所屬類股近一週%s %.1f%%" % ("上漲" if v >= 0 else "下跌", abs(v) * 100)
     if k == "news_sent":
         if abs(v) < 0.05:
             return None
@@ -1133,6 +1163,8 @@ def run_engine(prog=None):
     say("計算 %d 檔股票、%d 個交易日的因子" % (N, T), 0, N)
 
     FA = {k: [None] * N for k in FKEYS}      # 每個因子：每檔股票一個 array('f')
+    _SHARES.clear()
+    _SHARES.update(D.shares)
     A_all, traded_all, val20_all, ret_all = [None] * N, [None] * N, [None] * N, [None] * N
     ma_all = [None] * N
     stock_close, stock_fi = {}, {}
@@ -1150,6 +1182,27 @@ def run_engine(prog=None):
         stock_fi[code] = s["fi"]
         if i % 200 == 0:
             say("計算因子 %d/%d" % (i, N), i, N)
+
+    # 類股強弱：同產業股票的平均漲跌
+    say("計算類股強弱")
+    ind_of = [D.industry.get(c) or "" for c in codes]
+    groups = {}
+    for i, g in enumerate(ind_of):
+        if g and g not in ("ETF", "存託憑證"):
+            groups.setdefault(g, []).append(i)
+    for name, base in (("ind_mom20", "mom20"), ("ind_mom5", "mom5")):
+        for g, mem in groups.items():
+            if len(mem) < 4:
+                continue
+            col = FA[base]
+            out = [NAN] * T
+            for t in range(T):
+                vals = [col[i][t] for i in mem if col[i][t] == col[i][t]]
+                if len(vals) >= 4:
+                    out[t] = sum(vals) / len(vals)
+            arr = array("f", out)
+            for i in mem:
+                FA[name][i] = arr
 
     say("大盤模型")
     mkt = market_model(D, stock_close, stock_fi)

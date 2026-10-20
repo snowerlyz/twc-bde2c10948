@@ -24,7 +24,7 @@ def build(out):
     api = os.path.join(out, "api")
     os.makedirs(os.path.join(api, "stock"), exist_ok=True)
     os.makedirs(os.path.join(api, "warrants"), exist_ok=True)
-    for name in ("latest", "model", "futures", "warrant_picks", "daytrade", "tuning", "sectors", "global", "report"):
+    for name in ("latest", "model", "futures", "warrant_picks", "daytrade", "tuning", "sectors", "global", "report", "live"):
         src = os.path.join(RESULTS, name + ".json")
         if os.path.exists(src):
             shutil.copyfile(src, os.path.join(api, name))
