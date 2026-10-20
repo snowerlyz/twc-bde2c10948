@@ -171,44 +171,101 @@ function setHz(i) { S.hz = i; store.set("hz", i); renderSeg(); route(); }
 
 // ====================================================================== 羅盤儀表
 let dialSeq = 0;
+// 儀表：黃銅外框＋深色玻璃錶面＋LED 刻度（由 50 往分數方向點亮）＋立體指針
+function mixHex(a, b, t) {
+  const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const x = p(a), y = p(b);
+  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+}
+function ledColor(v) {
+  const G = "#2fe39a", N = "#8f9bb3", R = "#ff4f5e";
+  const t = Math.min(1, Math.abs(v - 50) / 22);
+  return v <= 50 ? mixHex(N, G, t) : mixHex(N, R, t);
+}
 function dial(score, { size = "md", animate = true } = {}) {
   const id = "dl" + (++dialSeq);
-  const cx = 100, cy = 104, R = 78, W = 13;
-  const pt = (v, r) => { const a = Math.PI * (1 - v / 100); return [cx + r * Math.cos(a), cy - r * Math.sin(a)]; };
-  const arcD = (s0, s1, r) => { const [x0, y0] = pt(s0, r), [x1, y1] = pt(s1, r); return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`; };
+  const C = 120, RF = 98, RL = 84;
+  const pt = (deg, r) => { const a = deg * Math.PI / 180; return [C + r * Math.sin(a), C - r * Math.cos(a)]; };
+  const angOf = (v) => -120 + v * 2.4;
   const s = score == null ? 50 : Math.max(0, Math.min(100, score));
-  const ang = -90 + s * 1.8;
-  const startAng = animate && !FX.reduce ? -90 : ang;
+  const ang = angOf(s);
+  const anim = animate && !FX.reduce;
+  const startAng = anim ? angOf(50) : ang;
   const txt = score == null ? "—" : Math.round(score);
+  // LED 刻度
+  let leds = "";
+  const N = 49;
+  for (let i = 0; i < N; i++) {
+    const v = i / (N - 1) * 100;
+    const lit = score != null && ((v >= 50 && v <= s + 0.01) || (v <= 50 && v >= s - 0.01));
+    const col = ledColor(v);
+    const delay = anim ? Math.abs(v - 50) * 14 : 0;
+    leds += `<rect x="${C - 2.3}" y="${C - RL - 7}" width="4.6" height="14" rx="2" fill="${col}" transform="rotate(${angOf(v).toFixed(2)} ${C} ${C})"
+      class="led ${lit ? "on" : ""}" style="${lit ? `--d:${delay}ms;` : ""}" ${lit ? `filter="url(#${id}glow)"` : ""}/>`;
+  }
+  // 錶面刻度與數字
   let ticks = "";
   for (let v = 0; v <= 100; v += 5) {
-    const big = v % 25 === 0;
-    const [a1, b1] = pt(v, R + W / 2 + 5), [a2, b2] = pt(v, R + W / 2 + (big ? 12 : 8));
-    ticks += `<line x1="${a1.toFixed(1)}" y1="${b1.toFixed(1)}" x2="${a2.toFixed(1)}" y2="${b2.toFixed(1)}" stroke="var(--muted)" stroke-width="${big ? 1.6 : 1}" opacity="${big ? .8 : .4}"/>`;
+    const major = v % 25 === 0;
+    const [x1, y1] = pt(angOf(v), RL - 13), [x2, y2] = pt(angOf(v), RL - (major ? 22 : 17));
+    ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#cfd8ea" stroke-opacity="${major ? .75 : .3}" stroke-width="${major ? 1.6 : 1}" stroke-linecap="round"/>`;
+    if (major) {
+      const [tx, ty] = pt(angOf(v), RL - 32);
+      ticks += `<text x="${tx.toFixed(1)}" y="${(ty + 3.5).toFixed(1)}" text-anchor="middle" font-size="9.5" fill="#aeb9cf" fill-opacity=".8" font-family="var(--font-num)">${v}</text>`;
+    }
   }
-  const col = s >= 60 ? "var(--up)" : s <= 40 ? "var(--down)" : "var(--brass)";
-  const svg = `<svg class="dial" viewBox="0 0 200 160" role="img" aria-label="分數 ${txt}，${labelOf(score)}">
-    <defs>
-      <linearGradient id="${id}g" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="var(--down)"/><stop offset=".42" stop-color="var(--flat)" stop-opacity=".55"/><stop offset=".58" stop-color="var(--flat)" stop-opacity=".55"/><stop offset="1" stop-color="var(--up)"/></linearGradient>
-      <filter id="${id}f" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter>
-      <radialGradient id="${id}r" cx=".5" cy="1" r=".7"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>
-    </defs>
-    <path d="${arcD(0, 100, R - 22)} L${cx} ${cy} Z" fill="url(#${id}r)"/>
-    <path d="${arcD(0, 100, R)}" stroke="var(--surface-3)" stroke-width="${W}" fill="none" stroke-linecap="round"/>
-    <path d="${arcD(0, 100, R)}" stroke="url(#${id}g)" stroke-width="${W}" fill="none" stroke-linecap="round" filter="url(#${id}f)" opacity=".55"/>
-    <path d="${arcD(0, 100, R)}" stroke="url(#${id}g)" stroke-width="${W}" fill="none" stroke-linecap="round"/>
-    ${ticks}
-    <text x="${pt(0, R)[0]}" y="${cy + 20}" text-anchor="middle" font-size="10.5" fill="var(--muted)">看空</text>
-    <text x="${pt(100, R)[0]}" y="${cy + 20}" text-anchor="middle" font-size="10.5" fill="var(--muted)">看多</text>
-    <g class="needle" id="${id}" style="transform-origin:${cx}px ${cy}px;transform:rotate(${startAng}deg)">
-      <path d="M${cx} ${cy - 66} L${cx + 5.5} ${cy} L${cx} ${cy + 12} L${cx - 5.5} ${cy} Z" fill="var(--brass)" filter="url(#${id}f)" opacity=".7"/>
-      <path d="M${cx} ${cy - 66} L${cx + 5.5} ${cy} L${cx} ${cy + 12} L${cx - 5.5} ${cy} Z" fill="var(--brass)"/>
-      <path d="M${cx} ${cy - 66} L${cx + 5.5} ${cy} L${cx} ${cy} Z" fill="var(--brass-2)" opacity=".8"/>
+  const [lx, ly] = pt(angOf(0), RL - 4), [rx, ry] = pt(angOf(100), RL - 4);
+  const svg = `<svg class="dial gauge" viewBox="0 0 240 240" role="img" aria-label="分數 ${txt}，${labelOf(score)}">
+  <defs>
+    <linearGradient id="${id}bz" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff3d1"/><stop offset=".22" stop-color="#d7ad5e"/><stop offset=".5" stop-color="#6e5222"/>
+      <stop offset=".72" stop-color="#c79a4a"/><stop offset="1" stop-color="#3c2b10"/></linearGradient>
+    <linearGradient id="${id}bz2" x1="1" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#f6e2b0"/><stop offset=".45" stop-color="#7a5b25"/><stop offset="1" stop-color="#2a1e0a"/></linearGradient>
+    <filter id="${id}brush" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".02 1.6" numOctaves="1" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .22 0" result="w"/>
+      <feComposite in="w" in2="SourceGraphic" operator="in" result="wt"/>
+      <feBlend in="SourceGraphic" in2="wt" mode="soft-light"/></filter>
+    <radialGradient id="${id}face" cx=".5" cy=".38" r=".62">
+      <stop offset="0" stop-color="#22304f"/><stop offset=".55" stop-color="#0e1527"/><stop offset="1" stop-color="#04070e"/></radialGradient>
+    <radialGradient id="${id}vig" cx=".5" cy=".5" r=".5">
+      <stop offset=".78" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".75"/></radialGradient>
+    <linearGradient id="${id}glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".55" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="${id}ndl" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff4d6"/><stop offset=".48" stop-color="#f0c66d"/><stop offset=".52" stop-color="#b8862f"/><stop offset="1" stop-color="#7a5719"/></linearGradient>
+    <radialGradient id="${id}hub" cx=".35" cy=".3" r=".8">
+      <stop offset="0" stop-color="#fff7df"/><stop offset=".35" stop-color="#d9b05f"/><stop offset=".8" stop-color="#6b4d1c"/><stop offset="1" stop-color="#2d1f08"/></radialGradient>
+    <linearGradient id="${id}num" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#b9c4da"/></linearGradient>
+    <filter id="${id}glow" x="-200%" y="-50%" width="500%" height="200%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="${id}sh" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="2.5" dy="4" stdDeviation="2.6" flood-color="#000" flood-opacity=".7"/></filter>
+    <filter id="${id}inner" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <circle cx="${C}" cy="${C}" r="117" fill="#000" opacity=".45" filter="url(#${id}inner)"/>
+  <circle cx="${C}" cy="${C}" r="114" fill="url(#${id}bz)" filter="url(#${id}brush)"/>
+  <circle cx="${C}" cy="${C}" r="106" fill="url(#${id}bz2)"/>
+  <circle cx="${C}" cy="${C}" r="${RF + 2}" fill="#05070c"/>
+  <circle cx="${C}" cy="${C}" r="${RF}" fill="url(#${id}face)"/>
+  <circle cx="${C}" cy="${C}" r="${RF}" fill="url(#${id}vig)"/>
+  <circle cx="${C}" cy="${C}" r="${RF - 3}" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="5" filter="url(#${id}inner)"/>
+  <g class="leds">${leds}</g>
+  ${ticks}
+  <text x="${lx.toFixed(1)}" y="${(ly + 16).toFixed(1)}" text-anchor="middle" font-size="10" fill="#2fe39a" fill-opacity=".85" font-weight="700">看空</text>
+  <text x="${rx.toFixed(1)}" y="${(ry + 16).toFixed(1)}" text-anchor="middle" font-size="10" fill="#ff6b77" fill-opacity=".9" font-weight="700">看多</text>
+  <text class="score" x="${C}" y="${C + 58}" text-anchor="middle" font-size="${size === "lg" ? 40 : 38}" fill="url(#${id}num)" style="paint-order:stroke" stroke="#000" stroke-opacity=".35" stroke-width="3"
+    ${score != null ? `data-count="${Math.round(score)}" data-from="50"` : ""}>${txt}</text>
+  <g class="needle" id="${id}" style="transform-origin:${C}px ${C}px;transform:rotate(${startAng}deg)">
+    <g filter="url(#${id}sh)">
+      <path d="M${C - 1.2} ${C - 76} L${C + 1.2} ${C - 76} L${C + 5.5} ${C} L${C + 4} ${C + 18} L${C - 4} ${C + 18} L${C - 5.5} ${C} Z" fill="url(#${id}ndl)"/>
     </g>
-    <circle cx="${cx}" cy="${cy}" r="8" fill="var(--surface-solid)" stroke="var(--brass)" stroke-width="2"/><circle cx="${cx}" cy="${cy}" r="2.6" fill="var(--brass-2)"/>
-    <text class="score" x="${cx}" y="${cy + 50}" text-anchor="middle" font-size="${size === "lg" ? 38 : 34}" ${score != null ? `data-count="${Math.round(score)}" data-from="50"` : ""}>${txt}</text>
-  </svg>`;
-  if (animate && !FX.reduce) requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => { const g = document.getElementById(id); if (g) g.style.transform = `rotate(${ang}deg)`; }, 60)));
+    <path d="M${C} ${C - 76} L${C} ${C + 18}" stroke="#fff" stroke-opacity=".35" stroke-width=".6"/>
+  </g>
+  <circle cx="${C}" cy="${C}" r="11" fill="url(#${id}hub)" filter="url(#${id}sh)"/>
+  <circle cx="${C}" cy="${C}" r="4.2" fill="#1a1205" stroke="#f6dfa6" stroke-opacity=".6" stroke-width=".8"/>
+  <path d="M${C - 92} ${C - 18} A ${RF} ${RF} 0 0 1 ${C + 92} ${C - 18} Q ${C} ${C - 46} ${C - 92} ${C - 18} Z" fill="url(#${id}glass)" pointer-events="none"/>
+</svg>`;
+  if (anim) requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => { const g = document.getElementById(id); if (g) g.style.transform = `rotate(${ang}deg)`; }, 60)));
   return svg;
 }
 

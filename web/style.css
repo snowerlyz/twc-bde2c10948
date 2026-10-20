@@ -197,7 +197,7 @@ h3 { font-size: 15px; margin: 0; font-weight: 700; }
 /* ---------------------------------------------------------------- 大盤羅盤（主角） */
 .hero { display: grid; grid-template-columns: minmax(280px, 400px) 1fr; gap: 28px; align-items: center; padding: 26px 28px; }
 .hero .dial-wrap { text-align: center; }
-.verdict { font-family: var(--font); font-weight: 700; font-size: 24px; margin-top: -6px; letter-spacing: .04em; }
+.verdict { font-family: var(--font); font-weight: 700; font-size: 24px; margin-top: 10px; letter-spacing: .04em; }
 .hero-side .idx { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .hero-side .idx .big { font-family: var(--font-num); font-size: 46px; font-weight: 600; line-height: 1; letter-spacing: .01em; }
 .hero-side .idx .chg { font-family: var(--font-num); font-size: 21px; font-weight: 600; }
@@ -211,7 +211,12 @@ h3 { font-size: 15px; margin: 0; font-weight: 700; }
 .facts li { display: flex; gap: 10px; align-items: flex-start; color: var(--ink-2); }
 .facts li::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--brass); margin-top: 9px; box-shadow: 0 0 10px var(--brass); }
 
-.dial { width: 100%; max-width: 360px; display: block; margin: 0 auto; overflow: visible; }
+.dial { width: 100%; max-width: 300px; display: block; margin: 0 auto; overflow: visible; }
+.gauge { filter: drop-shadow(0 18px 30px rgba(0, 0, 0, .55)); }
+.gauge .led { opacity: .12; }
+.gauge .led.on { opacity: 1; animation: ledOn .4s ease-out var(--d, 0ms) both; }
+@keyframes ledOn { from { opacity: .12; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gauge .led.on { animation: none; } }
 .dial .score { font-family: var(--font-num); font-weight: 600; fill: var(--ink); }
 .dial .needle { transition: transform 1.2s cubic-bezier(.2, .9, .25, 1.2); }
 @media (prefers-reduced-motion: reduce) { .dial .needle { transition: none; } }
@@ -275,11 +280,11 @@ a.row:hover { background: linear-gradient(90deg, var(--brass-soft), transparent 
 .shb { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 .hzcard { display: flex; flex-direction: column; gap: 6px; }
 .hzcard.cur { border-color: transparent; background: linear-gradient(var(--surface-solid), var(--surface-solid)) padding-box, linear-gradient(160deg, var(--brass-2), rgba(230, 183, 92, .1) 60%, transparent) border-box; border: 1px solid transparent; }
-.hzcard .dial { max-width: 240px; }
+.hzcard .dial { max-width: 210px; }
 .hzcard .stat { font-size: 14px; color: var(--ink-2); text-align: center; }
 .hzcard .stat b { font-family: var(--font-num); font-size: 18px; }
 .hzbody { display: flex; flex-direction: column; gap: 6px; }
-.hzl { text-align: center; font-family: var(--font); font-weight: 700; font-size: 19px; margin-top: -6px; letter-spacing: .04em; }
+.hzl { text-align: center; font-family: var(--font); font-weight: 700; font-size: 19px; margin-top: 8px; letter-spacing: .04em; }
 .why { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .why ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .why li { display: flex; gap: 10px; align-items: flex-start; }
