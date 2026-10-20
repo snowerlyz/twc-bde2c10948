@@ -71,6 +71,7 @@ const GLOSS = {
   score: "分數 0～100，50 分代表看不出方向；越高越可能漲，越低越可能跌。75 分以上＝強烈看多，25 分以下＝強烈看空。分數綜合約 35 項指標：股價走勢、法人買賣、公司營收獲利、新聞消息，再加上大盤與美股等國際行情。短期看 1 週、中期看 1 個月、長期看 3 個月。",
   rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，個股分數會自動往 50 靠攏；大盤分數則改以「過去一年大盤實際上漲的比例」為主。等它重新變準，可信度會自己回升。",
   tune: "模型每天收盤後會自我檢討：試好幾種做法（例如各項指標的比重要不要、要多快跟著最近表現調整），用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種。",
+  recrule: "買賣建議怎麼來：每天把股票依分數分成 10 組，看過去每一組之後實際比大盤多賺或少賺多少。只有分數最高的幾組「過去平均明顯多賺、而且多數跑贏大盤」才標買進；最低的幾組「明顯少賺、多數跑輸大盤」才標賣出。每個期間、每個方向都要過去照做真的有效才會啟用，門檻每天依實測自動調整。",
   link: "連動：用過去約 200 個交易日統計，國外市場前一晚的漲跌，和這個類股隔天漲跌的關係。「連動高」代表常常同方向一起動；數字是平均關係，個別日子可能完全不同。",
   news: "收集鉅亨網、Yahoo 股市的財經新聞，和公司在公開資訊觀測站發布的重大訊息，依標題用字判斷偏好消息（利多）還是壞消息（利空）。這是用關鍵字粗略判斷，可能看錯，重要消息請點開原文確認。",
   glob: "台股常跟著國外走：美國股市（特別是半導體類股）、台積電在美國的股價、美元匯率、美國利率。這些已經算進大盤分數。美股是前一晚的收盤價。",
@@ -124,6 +125,7 @@ const ICON = {
   news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2V5Z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 16h4"/>',
   sector: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
   report: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7M9 8h3"/>',
+  picks: '<path d="M12 3v18M5 10l7-7 7 7"/><path d="M5 21h14" opacity=".5"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -131,12 +133,12 @@ const ICON = {
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
-  ["#/", "總覽", "home"], ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
+  ["#/", "總覽", "home"], ["#/picks", "買賣建議", "picks"], ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
   ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
   ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/check", "實測對答案", "target"], ["#/model", "分數怎麼算", "model"], ["#/help", "使用說明", "help"],
 ];
 $("#nav").innerHTML = NAV.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
-const TABS = [["#/", "總覽", "home"], ["#/report", "盤後", "report"], ["#/sectors", "類股", "sector"], ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/menu", "更多", "more"]];
+const TABS = [["#/", "總覽", "home"], ["#/picks", "建議", "picks"], ["#/report", "盤後", "report"], ["#/sectors", "類股", "sector"], ["#/stocks", "選股", "list"], ["#/menu", "更多", "more"]];
 $("#tabbar").innerHTML = TABS.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
 
 // ====================================================================== 資料
@@ -444,7 +446,8 @@ function barChart(box, labels, ys, { fmt = fmtInt, height = 110, unit = "" } = {
 // ====================================================================== 共用列
 function stockRow(r, { mode = "one" } = {}) {
   if (!r) return "";
-  const nm = `<div class="nm"><b>${esc(r.n)}</b><span>${r.c}　${esc(r.m)}${r.ind ? "・" + esc(r.ind) : ""}</span><span class="pxm small"> ${fmtPx(r.px)} ${chgHtml(r.chg)}</span></div>`;
+  const rt = r.rec && r.rec.a !== "觀望" ? ` <span class="tag ${r.rec.a === "買進" ? "tbuy" : "tsell"}">${r.rec.a}</span>` : "";
+  const nm = `<div class="nm"><b>${esc(r.n)}${rt}</b><span>${r.c}　${esc(r.m)}${r.ind ? "・" + esc(r.ind) : ""}</span><span class="pxm small"> ${fmtPx(r.px)} ${chgHtml(r.chg)}</span></div>`;
   if (mode === "three") {
     return `<a class="row s3" href="#/stock/${r.c}">${nm}<div class="px">${fmtPx(r.px)}</div><div class="ch">${chgHtml(r.chg)}</div>
       ${r.s.map((s, i) => `<div style="text-align:center">${pill(s, HZ_NAME[i] + "（" + HZ_SPAN[i] + "）：" + labelOf(s))}</div>`).join("")}${starBtn(r.c)}</a>`;
@@ -481,6 +484,7 @@ async function route() {
     else if (page === "model") await vModel(tok);
     else if (page === "check") await vCheck(tok);
     else if (page === "report") await vReport(tok);
+    else if (page === "picks") await vPicks(tok);
     else if (page === "sectors") await vSectors(tok);
     else if (page === "sector") await vSector(tok, decodeURIComponent(arg));
     else if (page === "global") await vGlobal(tok);
@@ -512,8 +516,9 @@ async function vHome(tok) {
   const mod = L.model[hz];
   const ind = L.industries || [];
   const w = S.watch.map((c) => S.byCode[c]).filter(Boolean).slice(0, 6);
-  let picks = [], RP = null;
+  let picks = [], RP = null, RC = null;
   try { picks = (await api("warrant_picks")).picks.slice(0, 5); } catch { }
+  try { RC = await api("recs"); } catch { }
   try { RP = await api("report"); } catch { }
   if (tok !== routeToken) return;
   view.innerHTML = `
@@ -527,6 +532,11 @@ async function vHome(tok) {
       <ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
     </div>
   </section>
+  ${RC ? `<section class="card section"><div class="card-h"><h2>${svgI("picks")} 今天的買賣建議</h2>${help("recrule")}<a class="more" href="#/picks">看全部</a></div>
+    <p style="margin:0 0 10px"><b class="up">買進 ${RC.n_buy} 檔</b>、<b class="down">賣出／避開 ${RC.n_sell} 檔</b>，其餘觀望。${HZ.map((h, i) => { const x = RC.h[h] || {}; return x.active && x.sides && x.sides.length ? `${HZ_NAME[i]}：${x.sides.map((s) => s === "buy" ? "買進" : "賣出").join("、")}啟用` : ""; }).filter(Boolean).join("；") || "今天沒有任何期間有足夠把握。"}</p>
+    ${RC.buys.length ? `<h3>買進（前 8 檔）</h3><div class="chips">${RC.buys.slice(0, 8).map((r) => `<a class="chip" href="#/stock/${r.c}"><b>${esc(r.n)}</b><span class="muted small">${esc(r.htxt.split("（")[0])}</span><span class="num up">+${(r.ex * 100).toFixed(1)}%</span></a>`).join("")}</div>` : ""}
+    ${RC.sells.length ? `<h3 style="margin-top:10px">賣出／避開（前 8 檔）</h3><div class="chips">${RC.sells.slice(0, 8).map((r) => `<a class="chip" href="#/stock/${r.c}"><b>${esc(r.n)}</b><span class="muted small">${esc(r.htxt.split("（")[0])}</span><span class="num down">${(r.ex * 100).toFixed(1)}%</span></a>`).join("")}</div>` : ""}
+  </section>` : ""}
   ${RP ? `<a class="card checklink section" href="#/report">${svgI("report")}<span><b>盤後報告：${esc(RP.title)}</b><span class="note">${esc(((RP.blocks.find((b) => b.h === "法人動向") || {}).lines || [""])[0])}</span></span><span class="more">看完整報告</span></a>` : ""}
   ${M.global && M.global.rows && M.global.rows.length || M.news ? `<div class="grid g2 section">${globalCard(M.global)}${newsCard(M.news)}</div>` : ""}
   <div class="grid g2 section">
@@ -629,7 +639,8 @@ async function vStock(tok, code) {
       ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣掉手續費和稅後賺錢的機會">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
       ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}</div>
   </div>
-  <div class="grid g3">
+  ${recBanner(d.rec, d.h)}
+  <div class="grid g3 section">
     ${hzs.map((h, i) => `<section class="card hzcard ${i === S.hz ? "cur" : ""}">
       <div class="card-h" style="margin:0"><h2>${HZ_NAME[i]}</h2><span class="note">${HZ_SPAN[i]}</span>${i === 0 ? help("score") : ""}</div>
       <div class="hzbody"><div class="hzd">${dial(h ? h.score : null, { animate: i === S.hz })}
@@ -1083,9 +1094,15 @@ async function vCheck(tok) {
       </div>
     </div></section>`;
   }).join("");
-  let SEC = null, LV = null;
+  let SEC = null, LV = null, RC = null;
   try { SEC = await api("sectors"); } catch { }
   try { LV = await api("live"); } catch { }
+  try { RC = await api("recs"); } catch { }
+  const recSec = RC ? `<section class="card section"><div class="card-h"><h2>${svgI("picks")} 買賣建議準不準</h2>${help("recrule")}<a class="more" href="#/picks">看今天的建議</a></div>
+    <p style="margin:0 0 10px">把「買賣建議」的規則套用在過去每一天（每天只用當時已知的資料），看照建議操作之後的實際結果。只有過去照做真的有效的期間和方向才會啟用。</p>
+    <div class="grid g3 concls">${HZ.map((h, i) => { const x = RC.h[h] || {}; const c = x.bt; const on = x.sides && x.sides.length; return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><ul>${on ? `<li class="cl ok"><i>✓</i><span><b>啟用：</b>${btLine(c, h)}。</span></li>` : `<li class="cl no"><i>✗</i><span><b>未啟用：</b>過去照做沒有明顯優勢。</span></li>`}${on && !x.active ? `<li class="cl warn"><i>!</i><span><b>今天暫停：</b>模型最近不太準。</span></li>` : ""}</ul>${c ? `<p class="note">統計 ${c.days} 個交易日；目前設定：看最近 ${x.win} 天、門檻 ${(x.thr * 100).toFixed(1)}%</p>` : ""}</div>`; }).join("")}</div>
+    ${LV && LV.rec && (LV.rec.buy.n || LV.rec.sell.n) ? `<p style="margin:12px 0 0"><b>前瞻實測（真正事前的建議）：</b>${LV.rec.buy.n ? `買進建議 ${LV.rec.buy.n} 筆已到期，平均比大盤${LV.rec.buy.ex >= 0 ? "多賺" : "少賺"} ${R(LV.rec.buy.ex)}，${P(LV.rec.buy.win)} 跑贏大盤` : ""}${LV.rec.sell.n ? `；賣出建議 ${LV.rec.sell.n} 筆已到期，平均比大盤${LV.rec.sell.ex >= 0 ? "多賺" : "少賺"} ${R(LV.rec.sell.ex)}，${P(LV.rec.sell.win)} 跑輸大盤` : ""}。</p>` : `<p class="note" style="margin:12px 0 0">前瞻實測：從今天起每天的建議都會存下來，到期後在這裡公布真實成績。</p>`}
+  </section>` : "";
   const SC = (SEC && SEC.check) || {}, IM = SEC && SEC.impact;
   const liveSec = LV && LV.start ? `<section class="card section glow"><span class="glow-ring"></span><div class="card-h"><h2>${svgI("target")} 前瞻實測：真正事前預測的成績</h2><span class="note">從 ${dayFull(LV.start)} 開始記錄，已存 ${LV.days} 天</span></div>
     <p style="margin:0 0 10px">上面的成績是「用過去資料模擬」的；這裡則是每天收盤後把當天的預測<b>原封不動存下來</b>，等時間到了再和真正的漲跌對答案。預測存下時完全不知道未來，之後換模型也不會改動，是判斷模型有沒有真的進步最公正的標準。</p>
@@ -1131,6 +1148,7 @@ async function vCheck(tok) {
     ${histDays.length >= 5 ? `<h3 style="margin-top:16px">每天的比較結果</h3><p class="note" style="margin:2px 0 8px">金線＝採用的做法，灰虛線＝固定比重（對照）；金線比灰線高，代表調整真的有幫助</p><div class="grid g2" id="tuneh"></div>` : `<p class="note" style="margin-top:10px">每天的比較結果會一天天累積（目前 ${histDays.length} 天），滿 5 天後這裡會出現走勢圖。</p>`}
   </section>
   ${liveSec}
+  ${recSec}
   ${sections}
   ${secCheck}
   ${impSec}
@@ -1303,6 +1321,80 @@ async function vGlobal(tok) {
 // ====================================================================== 更多（手機選單）
 function vMenu() {
   view.innerHTML = `<h1>全部功能</h1><div class="menu-grid">${NAV.map(([h, t, i]) => `<a class="card" href="${h}">${svgI(i)}<b>${t}</b></a>`).join("")}</div>`;
+}
+
+// ====================================================================== 買賣建議
+const HZ_KEY_I = { short: 0, mid: 1, long: 2 };
+function recPill(a, big) {
+  const c = a === "買進" ? "p-up2" : a === "賣出" ? "p-dn2" : "p-mid";
+  return `<span class="pill ${c} ${big ? "big" : "sm"}">${esc(a)}</span>`;
+}
+function btLine(c, hn) {
+  if (!c) return "";
+  const d = HZ_SHORT[HZ_KEY_I[hn]];
+  const P = (x) => x == null ? "—" : (x * 100).toFixed(0) + "%";
+  const R = (x) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(1)}%</span>`;
+  const out = [];
+  if (c.buy_ok) out.push(`照「買進」：${d}後平均比大盤${c.buy_ex >= 0 ? "多賺" : "少賺"} ${R(c.buy_ex)}，${P(c.buy_win)} 跑贏大盤，${P(c.buy_up)} 上漲`);
+  if (c.sell_ok) out.push(`照「賣出／避開」：${d}後平均比大盤${c.sell_ex >= 0 ? "多賺" : "少賺"} ${R(c.sell_ex)}，${P(c.sell_win)} 跑輸大盤`);
+  return out.join("；");
+}
+let pickSide = "buy", pickHz = "all", pickLimit = 50;
+async function vPicks(tok) {
+  const R = await api("recs").catch(() => null);
+  if (tok !== routeToken) return;
+  if (!R) { view.innerHTML = `<h1>買賣建議</h1><div class="card empty"><h2>買賣建議準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  const M = S.latest.market.horizons;
+  const status = HZ.map((h, i) => {
+    const x = R.h[h] || {};
+    let st;
+    if (!x.sides || !x.sides.length) st = `<span class="pill p-bad sm">未啟用</span><span class="note">過去照做沒有明顯優勢，暫不給建議</span>`;
+    else if (!x.active) st = `<span class="pill p-bad sm">今天暫停</span><span class="note">模型最近不太準，先不給建議</span>`;
+    else st = `<span class="pill p-good sm">啟用中</span><span class="note">${x.sides.map((s) => s === "buy" ? "買進" : "賣出").join("、")}</span>`;
+    return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${x.bt && x.sides && x.sides.length ? `<p class="note" style="margin:0">過去 ${x.bt.days} 個交易日，${btLine(x.bt, h)}。</p>` : ""}</div>`;
+  }).join("");
+  view.innerHTML = `<h1 class="grad">買賣建議</h1>
+  <p class="lead">依 ${dayFull(R.day)} 收盤資料，對每檔股票給出「買進／觀望／賣出」。原則是<b>只在過去實測真的有效的地方才給建議</b>：每天收盤後用過去的資料重新檢驗，沒有把握就說觀望。今天：<b class="up">買進 ${R.n_buy} 檔</b>、<b class="down">賣出 ${R.n_sell} 檔</b>，其餘觀望。</p>
+  <section class="card"><div class="card-h"><h2>這套建議過去的成績</h2>${help("recrule")}<a class="more" href="#/check">看完整實測</a></div>
+    <div class="grid g3 concls">${status}</div>
+    <p class="note" style="margin:10px 0 0">大盤目前：未來 1 週 ${Math.round(M.short.score)} 分、1 個月 ${Math.round(M.mid.score)} 分、3 個月 ${Math.round(M.long.score)} 分。${M.mid.score <= 40 ? "大盤偏弱，買進建議宜分批、減量。" : ""}「比大盤多賺」是相對表現；大盤若大跌，買進的股票也可能下跌。</p></section>
+  <div class="section filters"><div class="seg" id="pside"><button data-s="buy">買進（${R.n_buy}）</button><button data-s="sell">賣出／避開（${R.n_sell}）</button></div>
+    <div class="seg" id="phz"><button data-h="all">全部期間</button>${HZ.map((h, i) => `<button data-h="${h}">${HZ_NAME[i]}</button>`).join("")}</div></div>
+  <section class="card flush section" id="plist"></section>
+  <p class="disclaimer">買賣建議是依過去統計自動產生的參考，不保證獲利，也不是投資建議。停損、目標價是過去同類股票的常見漲跌範圍，請依自己的資金與風險承受度調整。「賣出」表示預期表現落後大盤，持有者可考慮減碼，沒有持有的可以避開。</p>`;
+  const draw = () => {
+    $$("#pside button").forEach((b) => b.classList.toggle("on", b.dataset.s === pickSide));
+    $$("#phz button").forEach((b) => b.classList.toggle("on", b.dataset.h === pickHz));
+    let rows = (pickSide === "buy" ? R.buys : R.sells) || [];
+    if (pickHz !== "all") rows = rows.filter((r) => r.h === pickHz);
+    const shown = rows.slice(0, pickLimit);
+    $("#plist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl ptbl"><thead><tr><th>股票</th><th>收盤</th><th>建議</th><th>預期比大盤</th><th>上漲機會</th><th>停損參考</th><th>目標參考</th><th style="text-align:left">理由</th></tr></thead><tbody>
+      ${shown.map((r) => { return `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'">
+        <td><b>${esc(r.n)}</b>${starBtn(r.c)}<br><span class="muted small">${r.c}${r.ind ? "・" + esc(r.ind) : ""}</span></td>
+        <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
+        <td>${recPill(r.a)}<br><span class="muted small">${esc(r.htxt)}${r.k >= 2 ? "・" + r.k + " 個期間一致" : ""}</span></td>
+        <td>${r.ex != null ? `<span class="${cls(r.ex)}">${r.ex > 0 ? "+" : ""}${(r.ex * 100).toFixed(1)}%</span>` : "—"}</td>
+        <td>${r.up != null ? (r.up * 100).toFixed(0) + "%" : "—"}</td>
+        <td>${fmtPx(r.stop)}</td><td>${fmtPx(r.target)}</td>
+        <td class="txt">${esc((Array.isArray(r.why) ? r.why : []).slice(0, 2).join("；"))}</td></tr>`; }).join("")}
+      </tbody></table></div>${rows.length > pickLimit ? `<div style="padding:14px 22px"><button class="btn" id="pmore">再顯示 50 檔（共 ${rows.length} 檔）</button></div>` : ""}` :
+      `<div class="empty"><p>${pickSide === "buy" ? "今天沒有夠把握的買進建議。" : "今天沒有賣出建議。"}模型只在過去實測有效時才給建議，沒有把握時寧可觀望。</p></div>`;
+    const mb = $("#pmore"); if (mb) mb.addEventListener("click", () => { pickLimit += 50; draw(); });
+    FX.enhance($("#plist"));
+  };
+  $("#pside").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) { pickSide = b.dataset.s; pickLimit = 50; draw(); } });
+  $("#phz").addEventListener("click", (e) => { const b = e.target.closest("[data-h]"); if (b) { pickHz = b.dataset.h; pickLimit = 50; draw(); } });
+  draw();
+}
+function recBanner(rec, h) {
+  if (!rec) return "";
+  if (rec.a === "觀望") return `<section class="card recbar hold"><div>${recPill("觀望", true)}</div><div><b>目前建議觀望</b><p class="note" style="margin:2px 0 0">${esc(rec.why || "目前沒有明顯的優勢")}。模型只在過去實測有效時才喊買或賣。</p></div><a class="more" href="#/picks">看今天的買賣建議</a></section>`;
+  const why = ((h && h[rec.h] && (rec.a === "買進" ? h[rec.h].pos : h[rec.h].neg)) || []).slice(0, 3);
+  return `<section class="card recbar ${rec.a === "買進" ? "buy" : "sell"}"><div>${recPill(rec.a, true)}</div>
+    <div class="rb"><b>${esc(rec.htxt)}${rec.k >= 2 ? `・${rec.k} 個期間看法一致` : ""}</b>
+      <div class="kv mini"><div><span>預期比大盤</span><b class="${cls(rec.ex)}">${rec.ex > 0 ? "+" : ""}${(rec.ex * 100).toFixed(1)}%</b></div><div><span>上漲機會</span><b>${rec.up != null ? (rec.up * 100).toFixed(0) + "%" : "—"}</b></div><div><span>停損參考</span><b>${fmtPx(rec.stop)}</b></div><div><span>目標參考</span><b>${fmtPx(rec.target)}</b></div></div>
+      ${why.length ? `<p class="note" style="margin:6px 0 0">主要理由：${esc(why.join("；"))}</p>` : ""}</div>
+    <a class="more" href="#/picks">看全部建議</a></section>`;
 }
 
 // ====================================================================== 說明

@@ -532,3 +532,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .seg::-webkit-scrollbar { display: none; }
 .seg button { white-space: nowrap; flex: none; }
+/* ---- 買賣建議 ---- */
+.pill.big { height: 38px; min-width: 76px; font-size: 18px; padding: 0 16px; }
+.recbar { display: flex; align-items: center; gap: 18px; margin-top: 14px; padding: 16px 20px; }
+.recbar .rb { flex: 1; }
+.recbar.buy { border-color: color-mix(in srgb, var(--up) 45%, transparent); }
+.recbar.sell { border-color: color-mix(in srgb, var(--down) 45%, transparent); }
+.kv.mini { grid-template-columns: repeat(4, minmax(90px, 1fr)); gap: 8px; margin-top: 8px; }
+.kv.mini > div { padding: 6px 10px; }
+.kv.mini b { font-size: 16px; }
+.tag.tbuy { background: color-mix(in srgb, var(--up) 20%, transparent); color: var(--up); margin-left: 4px; font-size: 11px; }
+.tag.tsell { background: color-mix(in srgb, var(--down) 20%, transparent); color: var(--down); margin-left: 4px; font-size: 11px; }
+.ptbl td.txt { min-width: 220px; }
+.filters .seg + .seg { margin-left: 8px; }
+@media (max-width: 860px) {
+  .recbar { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
+  .kv.mini { grid-template-columns: repeat(2, 1fr); }
+  .filters .seg + .seg { margin-left: 0; margin-top: 8px; }
+}

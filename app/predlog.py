@@ -17,7 +17,7 @@ def isnan(x):
     return x is None or x != x
 
 
-def save(D, res, stocks, dt, sectors=None):
+def save(D, res, stocks, dt, sectors=None, recs=None):
     day = D.days[-1]
     path = os.path.join(LOG_DIR, day + ".json.gz")
     # 同一天收盤後可以更新預測（例如晚上補上融資資料、早上補上美股收盤），
@@ -39,6 +39,8 @@ def save(D, res, stocks, dt, sectors=None):
         "pct": pct,
         "score": {r["c"]: r["s"] for r in stocks if r.get("s")},
         "sec": {s["ind"]: s["s"] for s in (sectors or [])},
+        "rec": {"buy": [[r["c"], r["h"]] for r in (recs or {}).get("buys", [])],
+                "sell": [[r["c"], r["h"]] for r in (recs or {}).get("sells", [])]},
         "dt": {"long": [r["c"] for r in (dt or {}).get("long", []) if r.get("ok")],
                "short": [r["c"] for r in (dt or {}).get("short", []) if r.get("ok")],
                "long_all": [r["c"] for r in (dt or {}).get("long", [])[:10]],
@@ -88,6 +90,7 @@ def evaluate(D, A_all):
     rows = {hn: [] for hn in H}
     mrows = {hn: [] for hn in H}
     dtrows = {"long": [], "short": []}
+    recrows = {"buy": [], "sell": []}
     for d in files:
         t0 = pos.get(d)
         if t0 is None:
@@ -119,6 +122,17 @@ def evaluate(D, A_all):
             ms = (P.get("mkt") or {}).get(hn)
             if ms is not None and not isnan(tx[t0]) and not isnan(tx[t0 + h]):
                 mrows[hn].append({"d": d, "s": ms, "r": tx[t0 + h] / tx[t0] - 1})
+        # 買賣建議：到期後，相對大盤多賺／少賺多少
+        for side in ("buy", "sell"):
+            for c, hn in (P.get("rec") or {}).get(side, []):
+                h = H.get(hn)
+                i = D.idx.get(c)
+                if h is None or i is None or t0 + h > last or isnan(tx[t0]) or isnan(tx[t0 + h]):
+                    continue
+                a0, a1 = A_all[i][t0], A_all[i][t0 + h]
+                if isnan(a0) or isnan(a1) or a0 <= 0:
+                    continue
+                recrows[side].append({"d": d, "hn": hn, "ex": (a1 / a0 - 1) - (tx[t0 + h] / tx[t0] - 1), "r": a1 / a0 - 1})
         if t0 + 1 <= last:
             for side, sign in (("long", 1), ("short", -1)):
                 picks = (P.get("dt") or {}).get(side) or []
@@ -150,6 +164,13 @@ def evaluate(D, A_all):
         hit = sum(1 for m in calls if (m["s"] >= 55) == (m["r"] > 0))
         out["mkt"][hn] = {"n": len(ms), "calls": len(calls), "hit": round(hit / len(calls), 4) if calls else None,
                           "base_up": round(sum(1 for m in ms if m["r"] > 0) / len(ms), 4) if ms else None}
+    out["rec"] = {}
+    for side in ("buy", "sell"):
+        rs = recrows[side]
+        good = (lambda x: x > 0) if side == "buy" else (lambda x: x < 0)
+        out["rec"][side] = {"n": len(rs), "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
+                            "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,
+                            "up": round(sum(1 for r in rs if r["r"] > 0) / len(rs), 4) if rs else None}
     for side in ("long", "short"):
         rs = dtrows[side]
         n = sum(r["n"] for r in rs)

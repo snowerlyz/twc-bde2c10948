@@ -9,6 +9,8 @@
 """
 
 RETRAIN = 15
+WEIGHTS = [0.0, 0.25, 0.5, 0.75, 1.0]     # 機器學習占的比例，每天依實測自動挑
+SEL_HL = 60                               # 挑比例時，越近的日子越重要
 TRAIN_DAYS = 250
 MIN_TRAIN = 40
 
@@ -58,6 +60,27 @@ def blend(store, fstore, pct_hist, H, keys, say=None):
 
         model, last_train = None, -10 ** 9
         ic_lin, ic_mix = [], []
+        ics = {w: [] for w in WEIGHTS}          # (t, ic)：每一種比例每天的實測
+        chosen_w = []
+        lam = 0.5 ** (1.0 / SEL_HL)
+
+        def pick_w(t):
+            """只用結果已揭曉（t-h 以前）的實測挑比例；資料不夠時用 0.5。"""
+            best, bv = 0.5, None
+            for w in WEIGHTS:
+                sw = sv = 0.0
+                for u, c in ics[w]:
+                    if u > t - h:
+                        break
+                    k = lam ** (t - h - u)
+                    sw += k
+                    sv += k * c
+                if sw < 10:
+                    return 0.5
+                v = sv / sw
+                if bv is None or v > bv + (0.002 if w != 0.5 else 0):
+                    best, bv = w, v
+            return best
         for t in days:
             if model is None or t - last_train >= RETRAIN:
                 tr = [u for u in days if t - h - TRAIN_DAYS <= u <= t - h and (u, hn) in fstore][::2]
@@ -85,20 +108,29 @@ def blend(store, fstore, pct_hist, H, keys, say=None):
             if not lin:
                 continue
             mlr = _rank01([(float(p), i) for p, i in zip(pred, alive)])
-            comb = [((lin.get(i, 0.5) + mlr[i]) / 2, i) for i in alive]
-            newp = _rank01(comb)
+            la = np.array([lin.get(i, 0.5) for i in alive], dtype=np.float64)
+            ma = np.array([mlr[i] for i in alive], dtype=np.float64)
             if y is not None:
                 m = ~np.isnan(y)
                 if m.sum() >= 100:
                     yy = y[m]
-                    a = np.array([lin.get(i, 0.5) for i in alive], dtype=np.float64)[m]
-                    b = np.array([newp[i] for i in alive], dtype=np.float64)[m]
-                    ic_lin.append(float(np.corrcoef(a, yy)[0, 1]))
-                    ic_mix.append(float(np.corrcoef(b, yy)[0, 1]))
+                    for w in WEIGHTS:
+                        cw = (1 - w) * la + w * ma
+                        ics[w].append((t, float(np.corrcoef(cw[m], yy)[0, 1])))
+            w = pick_w(t)
+            chosen_w.append(w)
+            comb = [((1 - w) * la[j] + w * ma[j], i) for j, i in enumerate(alive)]
+            newp = _rank01(comb)
+            if y is not None and m.sum() >= 100:
+                b = np.array([newp[i] for i in alive], dtype=np.float64)[m]
+                ic_lin.append(float(np.corrcoef(la[m], yy)[0, 1]))
+                ic_mix.append(float(np.corrcoef(b, yy)[0, 1]))
             pct_hist[hn][t] = newp
         report[hn] = {"n": len(ic_lin),
                       "ic_lin": round(sum(ic_lin) / len(ic_lin), 4) if ic_lin else None,
                       "ic_mix": round(sum(ic_mix) / len(ic_mix), 4) if ic_mix else None,
-                      "better": round(sum(1 for a, b in zip(ic_lin, ic_mix) if b > a) / len(ic_lin), 3) if ic_lin else None}
+                      "better": round(sum(1 for a, b in zip(ic_lin, ic_mix) if b > a) / len(ic_lin), 3) if ic_lin else None,
+                      "w": chosen_w[-1] if chosen_w else None,
+                      "w_ic": {str(w): round(sum(c for _, c in v) / len(v), 4) for w, v in ics.items() if v}}
         cache.clear()
     return report

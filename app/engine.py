@@ -1166,7 +1166,7 @@ def reason_text(k, v, sign):
     if v is None or isnan(v):
         return None
     if k.startswith("mom"):
-        n = {"mom5": "近一週", "mom20": "近一個月", "mom60": "近一季", "mom120": "近半年"}[k]
+        n = {"mom5": "近一週", "mom20": "近一個月", "mom60": "近三個月", "mom120": "近半年"}[k]
         return "%s%s %.1f%%" % (n, "上漲" if v >= 0 else "下跌", abs(v) * 100)
     if k == "ma20_gap":
         return "股價%s月線 %.1f%%" % ("高於" if v >= 0 else "低於", abs(v) * 100)
@@ -1466,6 +1466,7 @@ def run_engine(prog=None):
     results["FA"] = FA
     results["pct_hist"] = pct_hist
     results["model"]["ml"] = ml_report
+    results["comp_ic"] = comp_ic
     say("完成，耗時 %.0f 秒" % (time.time() - t0))
     return results, D, A_all
 

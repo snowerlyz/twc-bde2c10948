@@ -132,11 +132,27 @@ def analyze(prog=None):
     except Exception as e:
         sec_res = None
         log("類股／國際分析失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 買賣建議（只在實測有效的地方才建議；門檻每天依實測自動挑）
+    recs = None
+    try:
+        import rec as _rec
+        importlib.reload(_rec)
+        if prog:
+            prog.set(msg="產生買賣建議")
+        tpath = os.path.join(DB, "tuning.json")
+        tun_all = read_json(tpath, {}) or {}
+        recs, tun = _rec.build(D, A_all, res, stocks, tun_all)
+        tun_all = read_json(tpath, {}) or {}
+        tun_all["rec"] = tun
+        write_json(tpath, tun_all)
+        write_json(os.path.join(RESULTS, "recs.json"), recs)
+    except Exception as e:
+        log("買賣建議失敗：%s\n%s" % (e, traceback.format_exc()))
     # 前瞻實測：存下今天的預測，並替以前存的預測對答案
     try:
         import predlog as _pl
         importlib.reload(_pl)
-        _pl.save(D, res, stocks, dt, (sec_res or {}).get("sectors"))
+        _pl.save(D, res, stocks, dt, (sec_res or {}).get("sectors"), recs)
         write_json(os.path.join(RESULTS, "live.json"), _pl.evaluate(D, A_all))
     except Exception as e:
         log("前瞻實測失敗：%s\n%s" % (e, traceback.format_exc()))
@@ -183,6 +199,7 @@ def analyze(prog=None):
                                "calls": w["calls"][:5], "puts": w["puts"][:5]}
         det["fut"] = next((f for f in fut["stock"] if f["stock"] == code), None)
         det["dt"] = dt_scores.get(code)
+        det["rec"] = (res.get("_recs") or {}).get(code)
         write_json(os.path.join(sdir, code + ".json"), det)
     wdir = os.path.join(RESULTS, "warrants")
     os.makedirs(wdir, exist_ok=True)
