@@ -1,0 +1,21 @@
+name: 連線測試
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/probe.py
+      - name: 存結果到 probe 分支
+        run: |
+          git config user.name "twc-bot"; git config user.email "twc-bot@users.noreply.github.com"
+          git checkout --orphan probe
+          git rm -rf --cached . >/dev/null
+          git add probe_result.json
+          git commit -m "probe" -q
+          git push -f origin probe
