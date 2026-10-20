@@ -207,7 +207,7 @@ class Data:
     pass
 
 
-def load_data(max_days=320):
+def load_data(max_days=520):
     pdir = os.path.join(DB, "parts", "twse_px")
     days = sorted(f[:8] for f in os.listdir(pdir) if f.endswith(".json.gz")) if os.path.isdir(pdir) else []
     days = days[-max_days:]
@@ -513,6 +513,7 @@ def adjust_series(s):
 _SHARES = {}
 _HOLD = {"snaps": [], "idx": []}
 _FIN = {}
+_LAST = {}
 
 
 def stock_factors(s, A, traded, fund_days, code, T, news_days=None):
@@ -1326,7 +1327,7 @@ def run_engine(prog=None):
     comp_ic = {hn: [] for hn in HN}
     pct_hist = {hn: {} for hn in HN}                        # t -> {i: pct}（只存需要的日子）
     weights_hist = {hn: [] for hn in HN}
-    keep_from = max(0, T - 200)
+    keep_from = max(0, T - 300)
     store = {}      # t -> (alive, {k: array 排名，缺值為 0})
     fstore = {}     # (t, hn) -> array 未來報酬排名（缺值為 NaN）
     last_R = None
@@ -1376,6 +1377,8 @@ def run_engine(prog=None):
         if t % 20 == 0:
             say("檢驗因子 %d/%d 天" % (t, T), t, T)
 
+    if os.environ.get("TWC_KEEP_STORE"):     # 研究用：保留每日排名資料給機器學習實驗
+        _LAST.update(store=store, fstore=fstore, ic_hist=ic_hist, D=D, A_all=A_all, val20=val20_all)
     # ---- 自動調校：比較幾種「權重調整速度」，用實測結果挑最準的（每天都重新比一次）
     say("依實測結果自動調校")
     cfg = tune_main(D, store, fstore, ic_hist)

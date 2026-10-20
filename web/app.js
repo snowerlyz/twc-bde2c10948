@@ -1369,7 +1369,7 @@ function renderOnboarding() {
   view.innerHTML = `<div class="card empty glow" style="max-width:660px;margin:36px auto"><span class="glow-ring"></span>
     ${ROSE}
     <h2>正在建立你的台股資料庫</h2>
-    <p style="max-width:52ch;margin:0 auto">第一次使用要從證交所、櫃買中心、期交所下載近一年的公開資料。官方網站會擋太快的連線，所以刻意放慢：約 15 分鐘後就能先看到分析結果，完整一年資料約 40 分鐘補齊，之後每天只要幾分鐘。</p>
+    <p style="max-width:52ch;margin:0 auto">第一次使用要從證交所、櫃買中心、期交所下載近兩年的公開資料。官方網站會擋太快的連線，所以刻意放慢：約 15 分鐘後就能先看到分析結果，完整兩年資料約 1.5 小時補齊（在背景進行），之後每天只要幾分鐘。</p>
     ${running ? `<div class="progress" style="margin:22px 0 8px"><div style="width:${Math.max(3, pct)}%"></div></div>
       <p class="note num">${pct}%${st.msg ? "　" + esc(st.msg) : ""}</p>
       <ul class="steps">${order.map((k, i) => `<li class="${i < cur ? "done" : i === cur ? "now" : ""}"><i>${i < cur ? "✓" : i + 1}</i>${names[k]}</li>`).join("")}</ul>` :

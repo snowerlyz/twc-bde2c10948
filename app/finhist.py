@@ -85,7 +85,7 @@ def _quarters_back(n):
     return out
 
 
-def collect_fin(prog=None, months=26, quarters=10):
+def collect_fin(prog=None, months=38, quarters=14):
     os.makedirs(FIN_DIR, exist_ok=True)
     today = today_tw()
     n_new = 0

@@ -709,7 +709,7 @@ def run_collect(prog, total_days=250, chip_days=120, quick_days=70, on_stage=Non
             log("集保股權分散表：%s" % e)
         prog.set(phase="snapshot", msg="下載外資持股比率")
         trade_days = sorted((d for d in days_all if os.path.exists(part_path("twse_px", d))), reverse=True)
-        extra.collect_qfii(trade_days[:130], prog=prog)
+        extra.collect_qfii(trade_days[:260], prog=prog)
         try:
             import finhist
             prog.set(phase="snapshot", msg="下載月營收與季財報歷史")

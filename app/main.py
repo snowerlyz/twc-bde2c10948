@@ -221,7 +221,7 @@ def analyze(prog=None):
     return latest
 
 
-def update(full=True, total_days=250, chip_days=120):
+def update(full=True, total_days=500, chip_days=500):
     from collector import Progress, run_collect
     if not _acquire_lock():
         log("另一個更新正在進行，略過")

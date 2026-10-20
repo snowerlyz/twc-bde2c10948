@@ -319,7 +319,7 @@ def fetch_qfii_day(day):
     return out
 
 
-def collect_qfii(days, max_new=130, prog=None):
+def collect_qfii(days, max_new=260, prog=None):
     """補齊最近的外資持股比率（days 由新到舊）。"""
     n = 0
     for d in days:
