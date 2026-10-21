@@ -27,6 +27,10 @@ H_LABEL = {"short": "短期（約 1 週，5 個交易日）", "mid": "中期（�
 HALF_LIFE = json.loads(os.environ["TWC_HL"]) if os.environ.get("TWC_HL") else {"short": 120, "mid": 150, "long": 90}
 CAL_WIN = {"short": 60, "mid": 80, "long": 100}
 SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
+# 大盤模型的「穩健模式」：用 t 值判斷模型最近準不準、歷史上漲比例向長期常態收斂。
+# 長期（60 天）一年內真正獨立的樣本只有 4 個左右，最需要；2026/10/21 實驗後先只用在長期（研究用可用環境變數覆寫）
+MKT_ROBUST = set(x for x in os.environ.get("TWC_MKT_ROBUST", "long").split(",") if x)
+MKT_P0 = {"short": 0.56, "mid": 0.60, "long": 0.65}   # 台股長期「h 日後上漲」的大約比例（事前常識值）
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
 ENGINE_VERSION = 9
 
@@ -949,13 +953,27 @@ def market_model(D, stock_close, stock_fi):
             kn = [(score_s[u], fr[u]) for u in range(max(40, t - h - 150), t - h + 1)
                   if 0 <= u < T and not isnan(score_s[u]) and not isnan(fr[u])]
             c = pearson([a for a, _ in kn], [b for _, b in kn]) if len(kn) >= 30 else None
-            return c, (0.5 if c is None else max(0.0, min(1.0, c / 0.2)))
+            if c is None:
+                return c, 0.5
+            if hn not in MKT_ROBUST:
+                return c, max(0.0, min(1.0, c / 0.2))
+            # 每天的 h 日漲跌互相重疊，真正獨立的樣本只有約 len/h 個；
+            # 用 t 值判斷「最近準」是不是運氣：t 值 1 以下不信，2 以上全信。
+            n_eff = len(kn) / float(h)
+            if n_eff <= 3 or c <= 0:
+                return c, 0.0
+            tv = c * math.sqrt(n_eff - 2) / math.sqrt(max(1e-9, 1 - c * c))
+            return c, max(0.0, min(1.0, tv - 1.0))
 
         def base_at(t):
             ups = [fr[u] for u in range(max(0, t - h - 250), t - h + 1) if 0 <= u < T and not isnan(fr[u])]
             if len(ups) < 40:
                 return None, 50.0
             p = sum(1 for r in ups if r > 0) / len(ups)
+            if hn in MKT_ROBUST:
+                # 一年內真正獨立的 h 日樣本不多，向台股長期常態（多數期間上漲）收斂，避免一次大跌就整年偏空
+                n_eff = len(ups) / float(h)
+                p = (n_eff * p + 10.0 * MKT_P0[hn]) / (n_eff + 10.0)
             return p, 50 + (p - 0.5) * 100 * 0.4
 
         fin_s = [NAN] * T
