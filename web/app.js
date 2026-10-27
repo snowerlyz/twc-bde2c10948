@@ -71,7 +71,7 @@ const GLOSS = {
   score: "分數 0～100，50 分代表看不出方向；越高越可能漲，越低越可能跌。75 分以上＝強烈看多，25 分以下＝強烈看空。分數綜合約 35 項指標：股價走勢、法人買賣、公司營收獲利、新聞消息，再加上大盤與美股等國際行情。短期看 1 週、中期看 1 個月、長期看 3 個月。",
   rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，個股分數會自動往 50 靠攏；大盤分數則改以「過去一年大盤實際上漲的比例」為主。等它重新變準，可信度會自己回升。",
   tune: "模型每天收盤後會自我檢討：試好幾種做法（例如各項指標的比重要不要、要多快跟著最近表現調整），用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種。",
-  recrule: "買賣建議怎麼來：每天把股票依分數分成 10 組，看過去每一組之後實際比大盤多賺或少賺多少。只有分數最高的幾組「過去平均明顯多賺、而且多數跑贏大盤」才標買進；最低的幾組「明顯少賺、多數跑輸大盤」才標賣出。每個期間、每個方向都要過去照做真的有效才會啟用，門檻每天依實測自動調整。",
+  recrule: "評價怎麼來：每天把股票依分數分成 10 組，看過去每一組之後實際比大盤多賺或少賺多少。只有分數最高的幾組「過去平均明顯多賺、而且多數跑贏大盤」才標建議買；最低的幾組「明顯少賺、多數跑輸大盤」才標建議賣；其他都是中立。成交太少或處置股一律中立。每個期間、每個方向都要過去照做真的有效才會啟用，門檻每天依實測自動調整。",
   link: "連動：用過去約 200 個交易日統計，國外市場前一晚的漲跌，和這個類股隔天漲跌的關係。「連動高」代表常常同方向一起動；數字是平均關係，個別日子可能完全不同。",
   news: "收集鉅亨網、Yahoo 股市的財經新聞，和公司在公開資訊觀測站發布的重大訊息，依標題用字判斷偏好消息（利多）還是壞消息（利空）。這是用關鍵字粗略判斷，可能看錯，重要消息請點開原文確認。",
   glob: "台股常跟著國外走：美國股市（特別是半導體類股）、台積電在美國的股價、美元匯率、美國利率。這些已經算進大盤分數。美股是前一晚的收盤價。",
@@ -133,12 +133,14 @@ const ICON = {
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
-  ["#/", "總覽", "home"], ["#/picks", "買賣建議", "picks"], ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
-  ["#/stocks", "選股", "list"], ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
-  ["#/futures", "期貨", "fut"], ["#/watch", "自選", "star"], ["#/check", "實測對答案", "target"], ["#/model", "分數怎麼算", "model"], ["#/help", "使用說明", "help"],
+  ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
+  null,
+  ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
+  ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
+  ["#/futures", "期貨", "fut"], ["#/check", "實測對答案", "target"], ["#/model", "分數怎麼算", "model"], ["#/help", "使用說明", "help"],
 ];
-$("#nav").innerHTML = NAV.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
-const TABS = [["#/", "總覽", "home"], ["#/picks", "建議", "picks"], ["#/report", "盤後", "report"], ["#/sectors", "類股", "sector"], ["#/stocks", "選股", "list"], ["#/menu", "更多", "more"]];
+$("#nav").innerHTML = NAV.map((x) => x ? `<a href="${x[0]}" data-r="${x[0]}">${svgI(x[2])}<span>${x[1]}</span></a>` : '<div class="navsep">更多資訊</div>').join("");
+const TABS = [["#/", "評價", "home"], ["#/picks", "清單", "picks"], ["#/stocks", "全部", "list"], ["#/watch", "自選", "star"], ["#/menu", "更多", "more"]];
 $("#tabbar").innerHTML = TABS.map(([h, t, i]) => `<a href="${h}" data-r="${h}">${svgI(i)}<span>${t}</span></a>`).join("");
 
 // ====================================================================== 資料
@@ -443,16 +445,45 @@ function barChart(box, labels, ys, { fmt = fmtInt, height = 110, unit = "" } = {
   hit.addEventListener("mouseleave", () => hideTip(box));
 }
 
+// ====================================================================== 評價（建議買／中立／建議賣）
+const RA = { B: ["建議買", "rb"], S: ["建議賣", "rs"], N: ["中立", "rn"] };
+const raOf = (r, i) => (r && r.ra ? r.ra[i] : null);
+const raVal = (a) => (a === "B" ? 1 : a === "S" ? -1 : 0);
+function rTag(a, { big = false, title = "" } = {}) {
+  if (!a) return `<span class="rt rx" title="${esc(title || "沒有評價（ETF 或資料不足）")}">—</span>`;
+  const [t, c] = RA[a];
+  return `<span class="rt ${c}${big ? " big" : ""}" title="${esc(title || t)}">${t}</span>`;
+}
+function raTitle(r, i) {
+  const s = r.s ? r.s[i] : null, a = raOf(r, i);
+  let t = `${HZ_NAME[i]}（${HZ_SPAN[i]}）：${a ? RA[a][0] : "沒有評價"}`;
+  if (s != null) t += `，分數 ${Math.round(s)}`;
+  if (r.rn) t += `（${r.rn}）`;
+  return t;
+}
+// 排序強度：幾個期間一致 → 預期差距 → 該期間分數（建議買分數越高越前、建議賣越低越前）
+function raKey(r, side, hi) {
+  const m = hi != null ? hi : raMain(r), sc = (r.s || [])[m] ?? 50;
+  const n = hi != null ? 0 : r.ra.split("").filter((a) => a === side).length;
+  return n * 10 + Math.abs((r.rx || [])[m] || 0) + (side === "B" ? sc : 100 - sc) / 1e4;
+}
+// 主要期間：建議買／賣中預期差距最大的期間
+function raMain(r) {
+  let best = -1, bv = 0;
+  (r.ra || "").split("").forEach((a, i) => { if (a !== "N") { const v = Math.abs((r.rx || [])[i] || 0) / [0.005, 0.015, 0.03][i]; if (v > bv || best < 0) { best = i; bv = v; } } });
+  return best;
+}
+
 // ====================================================================== 共用列
 function stockRow(r, { mode = "one" } = {}) {
   if (!r) return "";
-  const rt = r.rec && r.rec.a !== "觀望" ? ` <span class="tag ${r.rec.a === "買進" ? "tbuy" : "tsell"}">${r.rec.a}</span>` : "";
+  const rt = "";
   const nm = `<div class="nm"><b>${esc(r.n)}${rt}</b><span>${r.c}　${esc(r.m)}${r.ind ? "・" + esc(r.ind) : ""}</span><span class="pxm small"> ${fmtPx(r.px)} ${chgHtml(r.chg)}</span></div>`;
   if (mode === "three") {
     return `<a class="row s3" href="#/stock/${r.c}">${nm}<div class="px">${fmtPx(r.px)}</div><div class="ch">${chgHtml(r.chg)}</div>
-      ${r.s.map((s, i) => `<div style="text-align:center">${pill(s, HZ_NAME[i] + "（" + HZ_SPAN[i] + "）：" + labelOf(s))}</div>`).join("")}${starBtn(r.c)}</a>`;
+      ${HZ.map((h, i) => `<div style="text-align:center">${rTag(raOf(r, i), { title: raTitle(r, i) })}</div>`).join("")}${starBtn(r.c)}</a>`;
   }
-  return `<a class="row" href="#/stock/${r.c}">${nm}<div class="px">${fmtPx(r.px)}</div><div class="ch">${chgHtml(r.chg)}</div><div class="sb">${sbar(r.s[S.hz])}</div><div class="pm">${pill(r.s[S.hz])}</div></a>`;
+  return `<a class="row" href="#/stock/${r.c}">${nm}<div class="px">${fmtPx(r.px)}</div><div class="ch">${chgHtml(r.chg)}</div><div class="sb">${sbar(r.s[S.hz])}</div><div class="pm">${rTag(raOf(r, S.hz), { title: raTitle(r, S.hz) })}</div></a>`;
 }
 function rowsHead3(sortKey, dir) {
   const b = (k, t) => `<button data-sort="${k}" class="${sortKey === k ? "on" : ""}">${t}${sortKey === k ? (dir > 0 ? " ↑" : " ↓") : ""}</button>`;
@@ -521,9 +552,20 @@ async function vHome(tok) {
   try { RC = await api("recs"); } catch { }
   try { RP = await api("report"); } catch { }
   if (tok !== routeToken) return;
+  const rated = L.stocks.filter((r) => r.ra && !r.etf);
+  const cnt = HZ.map((h, i) => ({ B: rated.filter((r) => r.ra[i] === "B").length, S: rated.filter((r) => r.ra[i] === "S").length }));
   view.innerHTML = `
-  <h1 class="grad">今天的台股氣氛</h1>
-  <p class="lead">依 ${dayFull(L.day)} 收盤資料，判斷未來 ${HZ_SHORT[S.hz]}（約 ${[5, 20, 60][S.hz]} 個交易日）的方向。想看其他期間，按上方的「短期 1 週」「中期 1 個月」「長期 3 個月」切換。</p>
+  <h1 class="grad">今天的評價</h1>
+  <p class="lead">依 ${dayFull(L.day)} 收盤資料，每檔股票分別給出短期（1 週）、中期（1 個月）、長期（3 個月）的<b>建議買／中立／建議賣</b>。只有過去實測真的有效的期間才會喊買或賣，沒把握就是中立。</p>
+  <section class="card section"><div class="card-h"><h2>三個期間的評價</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
+    const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
+    return `<div class="rs1"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>
+      <p class="rcnt"><span class="rt rb">建議買</span> <b class="num">${cnt[i].B}</b>　<span class="rt rs">建議賣</span> <b class="num">${cnt[i].S}</b></p>
+      <p class="note">${on ? `過去照做有效，啟用：${x.sides.map((s) => s === "buy" ? "建議買" : "建議賣").join("、")}` : "這個期間過去照做沒有明顯優勢，目前全部中立"}・大盤${esc(M.horizons[h].label)}</p></div>`;
+  }).join("")}</div></section>
+  <section class="card flush section"><div class="card-h" style="padding:16px 22px 4px"><div class="seg" id="hside"><button data-s="B" class="on">建議買</button><button data-s="S">建議賣</button>${w.length ? '<button data-s="W">我的自選</button>' : ""}</div><a class="more" href="#/picks">看全部</a></div>
+    <div class="list" id="hlist"></div></section>
+  <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
   <section class="card hero glow"><span class="glow-ring"></span>
     <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div>${mh.rel != null ? `<a class="relnote" href="#/check">可信度 <span class="pill ${relInfo(mh.rel).c}">${relInfo(mh.rel).t}</span></a>${help("rel")}` : ""}</div>
     <div class="hero-side">
@@ -532,11 +574,6 @@ async function vHome(tok) {
       <ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
     </div>
   </section>
-  ${RC ? `<section class="card section"><div class="card-h"><h2>${svgI("picks")} 今天的買賣建議</h2>${help("recrule")}<a class="more" href="#/picks">看全部</a></div>
-    <p style="margin:0 0 10px"><b class="up">買進 ${RC.n_buy} 檔</b>、<b class="down">賣出／避開 ${RC.n_sell} 檔</b>，其餘觀望。${HZ.map((h, i) => { const x = RC.h[h] || {}; return x.active && x.sides && x.sides.length ? `${HZ_NAME[i]}：${x.sides.map((s) => s === "buy" ? "買進" : "賣出").join("、")}啟用` : ""; }).filter(Boolean).join("；") || "今天沒有任何期間有足夠把握。"}</p>
-    ${RC.buys.length ? `<h3>買進（前 8 檔）</h3><div class="chips">${RC.buys.slice(0, 8).map((r) => `<a class="chip" href="#/stock/${r.c}"><b>${esc(r.n)}</b><span class="muted small">${esc(r.htxt.split("（")[0])}</span><span class="num up">+${(r.ex * 100).toFixed(1)}%</span></a>`).join("")}</div>` : ""}
-    ${RC.sells.length ? `<h3 style="margin-top:10px">賣出／避開（前 8 檔）</h3><div class="chips">${RC.sells.slice(0, 8).map((r) => `<a class="chip" href="#/stock/${r.c}"><b>${esc(r.n)}</b><span class="muted small">${esc(r.htxt.split("（")[0])}</span><span class="num down">${(r.ex * 100).toFixed(1)}%</span></a>`).join("")}</div>` : ""}
-  </section>` : ""}
   ${RP ? `<a class="card checklink section" href="#/report">${svgI("report")}<span><b>盤後報告：${esc(RP.title)}</b><span class="note">${esc(((RP.blocks.find((b) => b.h === "法人動向") || {}).lines || [""])[0])}</span></span><span class="more">看完整報告</span></a>` : ""}
   ${M.global && M.global.rows && M.global.rows.length || M.news ? `<div class="grid g2 section">${globalCard(M.global)}${newsCard(M.news)}</div>` : ""}
   <div class="grid g2 section">
@@ -553,8 +590,23 @@ async function vHome(tok) {
     </section>
   </div>
   <p class="note section" style="text-align:center"><a href="#/check" style="color:var(--brass)">實測對答案</a>　·　<a href="#/model" style="color:var(--brass)">分數怎麼算</a>　·　<a href="#/help" style="color:var(--brass)">使用說明</a></p>
-  ${w.length ? `<section class="card flush section"><div class="card-h" style="padding:18px 22px 4px"><h2>我的自選</h2><a class="more" href="#/watch">管理自選</a></div><div class="list">${rowsHead3("", 0)}${w.map((r) => stockRow(r, { mode: "three" })).join("")}</div></section>` : ""}
+  </details>
   ${disclaimer}`;
+  const hdraw = (side) => {
+    let arr;
+    if (side === "W") arr = w;
+    else {
+      arr = rated.filter((r) => r.ra.includes(side));
+      arr.sort((a, b) => raKey(b, side) - raKey(a, side));
+    }
+    $("#hlist").innerHTML = arr.length ? rowsHead3("", 0) + arr.slice(0, 15).map((r) => stockRow(r, { mode: "three" })).join("") +
+      (arr.length > 15 ? `<div style="padding:12px 22px"><a class="btn" href="#/picks">看全部 ${arr.length} 檔</a></div>` : "")
+      : `<div class="empty"><p>${side === "B" ? "今天沒有夠把握的建議買。" : "今天沒有建議賣。"}沒有把握時寧可中立。</p></div>`;
+    $$("#hside button").forEach((b) => b.classList.toggle("on", b.dataset.s === side));
+    FX.enhance($("#hlist"));
+  };
+  $("#hside").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) hdraw(b.dataset.s); });
+  hdraw("B");
   $$("[data-hz2]").forEach((b) => b.addEventListener("click", () => setHz(+b.dataset.hz2)));
   const ia = $("#indall");
   if (ia) ia.addEventListener("click", () => { $("#indbars").innerHTML = indBars(ind, 999); ia.remove(); });
@@ -573,7 +625,7 @@ async function vStocks(tok) {
   if (location.hash.includes("asc")) { stockState.sort = "s"; stockState.dir = 1; history.replaceState(null, "", "#/stocks"); }
   const L = S.latest;
   const inds = [...new Set(L.stocks.map((r) => r.ind).filter(Boolean))].sort();
-  view.innerHTML = `<h1>選股</h1><p class="lead">所有上市櫃股票與 ETF 的分數：短期看未來 1 週、中期看 1 個月、長期看 3 個月。點欄位名稱可以排序，點星號可以加入自選。</p>
+  view.innerHTML = `<h1>全部股票</h1><p class="lead">每檔股票分別給出短期（1 週）、中期（1 個月）、長期（3 個月）的「建議買／中立／建議賣」。點欄位名稱可以排序（建議買排最前面），游標停在評價上可看分數，點星號可以加入自選。</p>
     <div class="filters">
       <input type="text" id="fq" placeholder="篩選名稱或代號" value="${esc(stockState.q)}" aria-label="篩選">
       <select id="fmk" aria-label="市場"><option value="">上市＋上櫃</option><option>上市</option><option>上櫃</option></select>
@@ -597,7 +649,7 @@ function drawStocks() {
     (!st.mk || r.m === st.mk) && (st.type === "all" || (st.type === "etf") === r.etf) && (!st.ind || r.ind === st.ind) &&
     (r.val || 0) >= st.minval && (!q || r.c.includes(q) || r.n.toLowerCase().includes(q)));
   const key = st.sort === "s" ? "s" + S.hz : st.sort;
-  const get = (r) => key === "name" ? r.c : key === "px" ? r.px : key === "chg" ? r.chg : r.s[+key.slice(1)];
+  const get = (r) => { if (key === "name") return r.c; if (key === "px") return r.px; if (key === "chg") return r.chg; const i = +key.slice(1); return r.s[i] == null ? null : raVal(raOf(r, i)) * 1000 + r.s[i]; };
   arr.sort((a, b) => { const x = get(a), y = get(b); if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * st.dir; });
   const box = $("#slist");
   box.innerHTML = rowsHead3(key, st.dir) + arr.slice(0, st.limit).map((r) => stockRow(r, { mode: "three" })).join("") +
@@ -616,6 +668,7 @@ function drawStocks() {
 // ====================================================================== 個股
 async function vStock(tok, code) {
   const d = await api("stock/" + code);
+  const RC = await api("recs").catch(() => null);
   if (tok !== routeToken) return;
   const r = S.byCode[code] || {};
   const last = d.hist[d.hist.length - 1] || [];
@@ -639,7 +692,8 @@ async function vStock(tok, code) {
       ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣掉手續費和稅後賺錢的機會">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
       ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}</div>
   </div>
-  ${recBanner(d.rec, d.h)}
+  ${ratingCard(d, r, RC)}
+  <details class="card more-info section"><summary>分數、上漲機會與理由（${HZ_NAME[S.hz]}）</summary>
   <div class="grid g3 section">
     ${hzs.map((h, i) => `<section class="card hzcard ${i === S.hz ? "cur" : ""}">
       <div class="card-h" style="margin:0"><h2>${HZ_NAME[i]}</h2><span class="note">${HZ_SPAN[i]}</span>${i === 0 ? help("score") : ""}</div>
@@ -653,9 +707,11 @@ async function vStock(tok, code) {
     <div class="why"><div class="plus"><h3>加分（偏多的理由）</h3><ul>${cur.pos.length ? cur.pos.map((t) => `<li><i>＋</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯的加分理由</li>'}</ul></div>
     <div class="minus"><h3>扣分（偏空的理由）</h3><ul>${cur.neg.length ? cur.neg.map((t) => `<li><i>－</i>${esc(t)}</li>`).join("") : '<li class="muted">沒有明顯的扣分理由</li>'}</ul></div></div>
     <p class="note" style="margin:14px 0 0">分數主要看這檔股票和其他股票比起來條件好不好（占 3/4），再加上大盤氣氛（占 1/4）。它目前的條件贏過全市場 ${Math.round(cur.pct * 100)}% 的股票。${cur.n ? `上漲機會是根據過去 ${fmtInt(cur.n)} 個分數差不多的例子統計出來的。` : ""}${(S.latest.model?.[HZ[S.hz]]?.rel ?? 1) < 0.4 ? "這個期間的分數最近不太準，所以先調得比較保守（靠近 50 分）。" : ""}</p></section>` : ""}
-  ${stockNewsCard(d.news)}
+  </details>
   <section class="card section"><div class="card-h"><h2>股價走勢</h2><div class="seg" id="rng" style="margin-left:auto"><button data-n="60">3 個月</button><button data-n="120" class="on">6 個月</button><button data-n="250">1 年</button></div></div>
     <div class="chart" id="kchart"></div></section>
+  ${d.news ? `<details class="card more-info section"${d.news.disp || d.news.warn ? " open" : ""}><summary>相關新聞與公告</summary>${stockNewsCard(d.news)}</details>` : ""}
+  <details class="card more-info section"><summary>法人動向與基本面</summary>
   <div class="grid g2 section">
     <section class="card"><div class="card-h"><h2>法人與散戶動向</h2><span class="note">近 20 個交易日，單位：張</span></div>
       <div class="kv" style="margin-bottom:14px">
@@ -684,7 +740,7 @@ async function vStock(tok, code) {
       ${d.warrants ? `<div class="card-h" style="margin-top:18px"><h2>比較划算的權證</h2>${help("quality")}<a class="more" href="#/warrants/${code}">全部 ${d.warrants.n_call + d.warrants.n_put} 檔</a></div>
         ${miniWarrants(d.warrants)}` : ""}
     </section>
-  </div>${disclaimer}`;
+  </div></details>${disclaimer}`;
   const draw = (n) => candleChart($("#kchart"), d.hist, n);
   let curN = 120;
   draw(curN);
@@ -1320,7 +1376,7 @@ async function vGlobal(tok) {
 
 // ====================================================================== 更多（手機選單）
 function vMenu() {
-  view.innerHTML = `<h1>全部功能</h1><div class="menu-grid">${NAV.map(([h, t, i]) => `<a class="card" href="${h}">${svgI(i)}<b>${t}</b></a>`).join("")}</div>`;
+  view.innerHTML = `<h1>全部功能</h1><div class="menu-grid">${NAV.filter(Boolean).map(([h, t, i]) => `<a class="card" href="${h}">${svgI(i)}<b>${t}</b></a>`).join("")}</div>`;
 }
 
 // ====================================================================== 買賣建議
@@ -1339,52 +1395,79 @@ function btLine(c, hn) {
   if (c.sell_ok) out.push(`照「賣出／避開」：${d}後平均比大盤${c.sell_ex >= 0 ? "多賺" : "少賺"} ${R(c.sell_ex)}，${P(c.sell_win)} 跑輸大盤`);
   return out.join("；");
 }
-let pickSide = "buy", pickHz = "all", pickLimit = 50;
+let pickSide = "B", pickHz = "all", pickLimit = 50;
 async function vPicks(tok) {
   const R = await api("recs").catch(() => null);
   if (tok !== routeToken) return;
-  if (!R) { view.innerHTML = `<h1>買賣建議</h1><div class="card empty"><h2>買賣建議準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  if (!R) { view.innerHTML = `<h1>評價清單</h1><div class="card empty"><h2>評價準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
   const M = S.latest.market.horizons;
+  const info = {};
+  for (const x of (R.buys || []).concat(R.sells || [])) info[x.c] = x;
+  const rated = S.latest.stocks.filter((r) => r.ra && !r.etf);
   const status = HZ.map((h, i) => {
     const x = R.h[h] || {};
     let st;
-    if (!x.sides || !x.sides.length) st = `<span class="pill p-bad sm">未啟用</span><span class="note">過去照做沒有明顯優勢，暫不給建議</span>`;
-    else if (!x.active) st = `<span class="pill p-bad sm">今天暫停</span><span class="note">模型最近不太準，先不給建議</span>`;
-    else st = `<span class="pill p-good sm">啟用中</span><span class="note">${x.sides.map((s) => s === "buy" ? "買進" : "賣出").join("、")}</span>`;
+    if (!x.sides || !x.sides.length) st = `<span class="pill p-bad sm">全部中立</span><span class="note">過去照做沒有明顯優勢，暫不喊買賣</span>`;
+    else if (!x.active) st = `<span class="pill p-bad sm">今天暫停</span><span class="note">模型最近不太準，先全部中立</span>`;
+    else st = `<span class="pill p-good sm">啟用中</span><span class="note">${x.sides.map((s) => s === "buy" ? "建議買" : "建議賣").join("、")}</span>`;
     return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${x.bt && x.sides && x.sides.length ? `<p class="note" style="margin:0">過去 ${x.bt.days} 個交易日，${btLine(x.bt, h)}。</p>` : ""}</div>`;
   }).join("");
-  view.innerHTML = `<h1 class="grad">買賣建議</h1>
-  <p class="lead">依 ${dayFull(R.day)} 收盤資料，對每檔股票給出「買進／觀望／賣出」。原則是<b>只在過去實測真的有效的地方才給建議</b>：每天收盤後用過去的資料重新檢驗，沒有把握就說觀望。今天：<b class="up">買進 ${R.n_buy} 檔</b>、<b class="down">賣出 ${R.n_sell} 檔</b>，其餘觀望。</p>
-  <section class="card"><div class="card-h"><h2>這套建議過去的成績</h2>${help("recrule")}<a class="more" href="#/check">看完整實測</a></div>
+  const nB = rated.filter((r) => r.ra.includes("B")).length, nS = rated.filter((r) => r.ra.includes("S")).length;
+  view.innerHTML = `<h1 class="grad">評價清單</h1>
+  <p class="lead">依 ${dayFull(R.day)} 收盤資料，每檔股票分別給出短、中、長期的「建議買／中立／建議賣」。<b>只在過去實測真的有效的期間才喊買賣</b>，沒有把握就是中立。</p>
+  <section class="card"><div class="card-h"><h2>這套評價過去的成績</h2>${help("recrule")}<a class="more" href="#/check">看完整實測</a></div>
     <div class="grid g3 concls">${status}</div>
-    <p class="note" style="margin:10px 0 0">大盤目前：未來 1 週 ${Math.round(M.short.score)} 分、1 個月 ${Math.round(M.mid.score)} 分、3 個月 ${Math.round(M.long.score)} 分。${M.mid.score <= 40 ? "大盤偏弱，買進建議宜分批、減量。" : ""}「比大盤多賺」是相對表現；大盤若大跌，買進的股票也可能下跌。</p></section>
-  <div class="section filters"><div class="seg" id="pside"><button data-s="buy">買進（${R.n_buy}）</button><button data-s="sell">賣出／避開（${R.n_sell}）</button></div>
-    <div class="seg" id="phz"><button data-h="all">全部期間</button>${HZ.map((h, i) => `<button data-h="${h}">${HZ_NAME[i]}</button>`).join("")}</div></div>
+    <p class="note" style="margin:10px 0 0">大盤目前：未來 1 週${M.short.label}、1 個月${M.mid.label}、3 個月${M.long.label}。「比大盤多賺」是相對表現；大盤若大跌，建議買的股票也可能下跌。</p></section>
+  <div class="section filters"><div class="seg" id="pside"><button data-s="B">建議買（${nB}）</button><button data-s="S">建議賣（${nS}）</button></div>
+    <div class="seg" id="phz"><button data-h="all">任一期間</button>${HZ.map((h, i) => `<button data-h="${i}">${HZ_NAME[i]}</button>`).join("")}</div></div>
   <section class="card flush section" id="plist"></section>
-  <p class="disclaimer">買賣建議是依過去統計自動產生的參考，不保證獲利，也不是投資建議。停損、目標價是過去同類股票的常見漲跌範圍，請依自己的資金與風險承受度調整。「賣出」表示預期表現落後大盤，持有者可考慮減碼，沒有持有的可以避開。</p>`;
+  <p class="disclaimer">評價是依過去統計自動產生的參考，不保證獲利，也不是投資建議。停損、目標價是過去同類股票的常見漲跌範圍，請依自己的資金與風險承受度調整。「建議賣」表示預期表現落後大盤，持有者可考慮減碼，沒有持有的可以避開。</p>`;
   const draw = () => {
     $$("#pside button").forEach((b) => b.classList.toggle("on", b.dataset.s === pickSide));
-    $$("#phz button").forEach((b) => b.classList.toggle("on", b.dataset.h === pickHz));
-    let rows = (pickSide === "buy" ? R.buys : R.sells) || [];
-    if (pickHz !== "all") rows = rows.filter((r) => r.h === pickHz);
+    $$("#phz button").forEach((b) => b.classList.toggle("on", b.dataset.h === String(pickHz)));
+    const hi = pickHz === "all" ? null : +pickHz;
+    let rows = rated.filter((r) => hi == null ? r.ra.includes(pickSide) : r.ra[hi] === pickSide);
+    rows.sort((a, b) => raKey(b, pickSide, hi) - raKey(a, pickSide, hi));
     const shown = rows.slice(0, pickLimit);
-    $("#plist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl ptbl"><thead><tr><th>股票</th><th>收盤</th><th>建議</th><th>預期比大盤</th><th>上漲機會</th><th>停損參考</th><th>目標參考</th><th style="text-align:left">理由</th></tr></thead><tbody>
-      ${shown.map((r) => { return `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'">
+    $("#plist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl ptbl"><thead><tr><th>股票</th><th>收盤</th>${HZ.map((h, i) => `<th>${HZ_NAME[i]}</th>`).join("")}<th>預期比大盤</th><th>停損參考</th><th>目標參考</th><th style="text-align:left">理由</th></tr></thead><tbody>
+      ${shown.map((r) => { const m = hi != null ? hi : raMain(r), ex = (r.rx || [])[m], x = info[r.c] || {}; const same = x.h && HZ[m] === x.h; return `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'">
         <td><b>${esc(r.n)}</b>${starBtn(r.c)}<br><span class="muted small">${r.c}${r.ind ? "・" + esc(r.ind) : ""}</span></td>
         <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
-        <td>${recPill(r.a)}<br><span class="muted small">${esc(r.htxt)}${r.k >= 2 ? "・" + r.k + " 個期間一致" : ""}</span></td>
-        <td>${r.ex != null ? `<span class="${cls(r.ex)}">${r.ex > 0 ? "+" : ""}${(r.ex * 100).toFixed(1)}%</span>` : "—"}</td>
-        <td>${r.up != null ? (r.up * 100).toFixed(0) + "%" : "—"}</td>
-        <td>${fmtPx(r.stop)}</td><td>${fmtPx(r.target)}</td>
-        <td class="txt">${esc((Array.isArray(r.why) ? r.why : []).slice(0, 2).join("；"))}</td></tr>`; }).join("")}
+        ${HZ.map((h, i) => `<td>${rTag(raOf(r, i), { title: raTitle(r, i) })}</td>`).join("")}
+        <td>${ex != null ? `<span class="${cls(ex)}">${ex > 0 ? "+" : ""}${(ex * 100).toFixed(1)}%</span><br><span class="muted small">${HZ_NAME[m]}</span>` : "—"}</td>
+        <td>${same ? fmtPx(x.stop) : "—"}</td><td>${same ? fmtPx(x.target) : "—"}</td>
+        <td class="txt">${esc((same && Array.isArray(x.why) ? x.why : []).slice(0, 2).join("；"))}</td></tr>`; }).join("")}
       </tbody></table></div>${rows.length > pickLimit ? `<div style="padding:14px 22px"><button class="btn" id="pmore">再顯示 50 檔（共 ${rows.length} 檔）</button></div>` : ""}` :
-      `<div class="empty"><p>${pickSide === "buy" ? "今天沒有夠把握的買進建議。" : "今天沒有賣出建議。"}模型只在過去實測有效時才給建議，沒有把握時寧可觀望。</p></div>`;
+      `<div class="empty"><p>${pickSide === "B" ? "這個期間今天沒有夠把握的建議買。" : "這個期間今天沒有建議賣。"}沒有把握時寧可中立。</p></div>`;
     const mb = $("#pmore"); if (mb) mb.addEventListener("click", () => { pickLimit += 50; draw(); });
     FX.enhance($("#plist"));
   };
   $("#pside").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) { pickSide = b.dataset.s; pickLimit = 50; draw(); } });
   $("#phz").addEventListener("click", (e) => { const b = e.target.closest("[data-h]"); if (b) { pickHz = b.dataset.h; pickLimit = 50; draw(); } });
   draw();
+}
+function ratingCard(d, r, RC) {
+  const hs = (d.rec && d.rec.hs) || {};
+  const px = r.px ?? ((d.hist[d.hist.length - 1] || [])[4]);
+  const cells = HZ.map((h, i) => {
+    const a = raOf(r, i), x = hs[h] || {}, st = (RC && RC.h[h]) || {};
+    const on = st.active && st.sides && st.sides.length;
+    let body;
+    if (a === "B" || a === "S") {
+      const lo = Math.min(x.lo ?? -0.05, -0.02), hi = Math.max(x.hi ?? 0.05, 0.02);
+      const stop = px ? px * (1 + (a === "B" ? lo : hi)) : null, tgt = px ? px * (1 + (a === "B" ? hi : lo)) : null;
+      body = `<div class="kv mini"><div><span>預期比大盤</span><b class="${cls(x.ex)}">${x.ex != null ? (x.ex > 0 ? "+" : "") + (x.ex * 100).toFixed(1) + "%" : "—"}</b></div>
+        <div><span>上漲機會</span><b>${x.up != null ? (x.up * 100).toFixed(0) + "%" : "—"}</b></div>
+        <div><span>停損參考</span><b>${fmtPx(stop)}</b></div><div><span>目標參考</span><b>${fmtPx(tgt)}</b></div></div>`;
+      const why = ((d.h[h] && (a === "B" ? d.h[h].pos : d.h[h].neg)) || []).slice(0, 2);
+      if (why.length) body += `<p class="note" style="margin:6px 0 0">理由：${esc(why.join("；"))}</p>`;
+    } else if (a === "N") {
+      body = `<p class="note" style="margin:4px 0 0">${esc(r.rn ? r.rn : !on ? "這個期間過去照做沒有明顯優勢，暫不喊買賣" : "條件在中間，沒有明顯優勢")}</p>`;
+    } else body = `<p class="note" style="margin:4px 0 0">ETF 或資料不足，不給評價</p>`;
+    return `<div class="rcell ${a === "B" ? "buy" : a === "S" ? "sell" : ""}"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>${rTag(a, { big: true, title: raTitle(r, i) })}${body}</div>`;
+  }).join("");
+  return `<section class="card section rcard"><div class="grid g3">${cells}</div>
+    <p class="note" style="margin:10px 0 0">評價是依過去統計自動產生的參考，不保證獲利。「預期比大盤」是過去同類股票的平均表現，平均值容易被少數大漲股拉高，請搭配上漲機會一起看。${help("recrule")}</p></section>`;
 }
 function recBanner(rec, h) {
   if (!rec) return "";

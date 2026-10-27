@@ -214,6 +214,12 @@ def build(D, A_all, res, stocks, tuning=None):
         v20 = val20.get(i, 0)
         rec = _combine(hs, px, v20, code in alerts.get("disp", {}), r)
         r["rec"] = {"a": rec["a"], "h": rec.get("h"), "ex": rec.get("ex")}
+        # 每個期間各自的評價：B＝建議買、S＝建議賣、N＝中立（成交太少、處置股一律中立）
+        ok = "hs" in rec or rec["a"] != "觀望"
+        r["ra"] = "".join({"buy": "B", "sell": "S"}.get(hs.get(hn, {}).get("a"), "N") if ok else "N" for hn in H)
+        r["rx"] = [hs.get(hn, {}).get("ex") for hn in H]
+        if not ok:
+            r["rn"] = rec.get("why")
         res.setdefault("_recs", {})[code] = rec
         det = (res.get("details") or {}).get(code)
         if det and rec.get("h"):

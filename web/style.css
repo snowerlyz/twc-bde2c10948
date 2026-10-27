@@ -550,3 +550,28 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
   .kv.mini { grid-template-columns: repeat(2, 1fr); }
   .filters .seg + .seg { margin-left: 0; margin-top: 8px; }
 }
+
+/* ---- 評價（建議買／中立／建議賣） */
+.rt { display: inline-flex; align-items: center; justify-content: center; height: 24px; min-width: 58px; padding: 0 10px; border-radius: 99px; font-size: 13px; font-weight: 700; border: 1px solid transparent; white-space: nowrap; }
+.rt.rb { background: linear-gradient(135deg, #ff7b83, var(--up)); color: #fff; }
+.rt.rs { background: linear-gradient(135deg, #5ce6a8, var(--down)); color: #04130c; }
+.rt.rn { background: var(--surface-2); color: var(--ink-2); border-color: var(--line); font-weight: 500; }
+.rt.rx { background: transparent; color: var(--muted); min-width: 0; }
+.rt.big { height: 38px; min-width: 96px; font-size: 18px; padding: 0 16px; margin: 6px 0 8px; }
+.rsum h3, .rcell h3 { margin: 0 0 6px; font-size: 16px; }
+.rsum h3 small, .rcell h3 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+.rsum .rcnt { margin: 4px 0; } .rsum .rcnt .num { font-size: 20px; margin-right: 4px; }
+.rsum .note { margin: 4px 0 0; }
+.rcell { padding: 12px 14px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); }
+.rcell.buy { border-color: color-mix(in srgb, var(--up) 45%, transparent); }
+.rcell.sell { border-color: color-mix(in srgb, var(--down) 45%, transparent); }
+details.more-info { padding: 0; }
+details.more-info > summary { cursor: pointer; list-style: none; padding: 16px 22px; font-weight: 700; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+details.more-info > summary::-webkit-details-marker { display: none; }
+details.more-info > summary::before { content: "▸"; color: var(--brass); transition: transform .2s; }
+details.more-info[open] > summary::before { transform: rotate(90deg); }
+details.more-info[open] { padding: 0 16px 16px; background: transparent; border-color: var(--line); box-shadow: none; }
+details.more-info[open] > summary { padding-left: 6px; }
+.navsep { margin: 14px 12px 4px; font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+.row.s3 .rt { min-width: 52px; height: 22px; font-size: 12px; padding: 0 8px; }
+@media (max-width: 640px) { .row.s3 .rt { min-width: 0; padding: 0 6px; font-size: 11px; } .rt.big { min-width: 80px; font-size: 16px; } }
