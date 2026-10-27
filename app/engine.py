@@ -30,6 +30,8 @@ SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
 # 大盤模型的「穩健模式」：用 t 值判斷模型最近準不準、歷史上漲比例向長期常態收斂。
 # 長期（60 天）一年內真正獨立的樣本只有 4 個左右，最需要；2026/10/21 實驗後先只用在長期（研究用可用環境變數覆寫）
 MKT_ROBUST = set(x for x in os.environ.get("TWC_MKT_ROBUST", "long").split(",") if x)
+# 研究開關：學大盤因子權重時，用「獨立樣本數」（天數÷h）決定要多相信資料（逗號列出期間）
+MKT_NINFO_OVL = set(x for x in os.environ.get("TWC_MKT_NINFO", "").split(",") if x)
 MKT_P0 = {"short": 0.56, "mid": 0.60, "long": 0.65}   # 台股長期「h 日後上漲」的大約比例（事前常識值）
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
 ENGINE_VERSION = 9
@@ -904,7 +906,7 @@ def market_model(D, stock_close, stock_fi):
                     xs.append(zk[t])
                     ys.append(fr[t])
             c = pearson(xs, ys) if len(xs) >= 40 else None
-            n_info = len(xs) / max(1.0, h / 5.0)
+            n_info = len(xs) / (float(h) if hn in MKT_NINFO_OVL else max(1.0, h / 5.0))
             weights[k] = prior if c is None else (n_info / (n_info + K)) * c + (K / (n_info + K)) * prior
         return weights
 
