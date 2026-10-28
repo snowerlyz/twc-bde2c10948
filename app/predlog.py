@@ -39,6 +39,8 @@ def save(D, res, stocks, dt, sectors=None, recs=None):
         "pct": pct,
         "score": {r["c"]: r["s"] for r in stocks if r.get("s")},
         "sec": {s["ind"]: s["s"] for s in (sectors or [])},
+        # 每檔三個期間的評價（B 建議買／S 建議賣），只存非全中立的
+        "ra": {r["c"]: r["ra"] for r in stocks if r.get("ra") and r["ra"] != "NNN"},
         "rec": {"buy": [[r["c"], r["h"]] for r in (recs or {}).get("buys", [])],
                 "sell": [[r["c"], r["h"]] for r in (recs or {}).get("sells", [])]},
         "dt": {"long": [r["c"] for r in (dt or {}).get("long", []) if r.get("ok")],
@@ -91,6 +93,7 @@ def evaluate(D, A_all):
     mrows = {hn: [] for hn in H}
     dtrows = {"long": [], "short": []}
     recrows = {"buy": [], "sell": []}
+    rarows = {hn: {"buy": [], "sell": []} for hn in H}
     for d in files:
         t0 = pos.get(d)
         if t0 is None:
@@ -133,6 +136,21 @@ def evaluate(D, A_all):
                 if isnan(a0) or isnan(a1) or a0 <= 0:
                     continue
                 recrows[side].append({"d": d, "hn": hn, "ex": (a1 / a0 - 1) - (tx[t0 + h] / tx[t0] - 1), "r": a1 / a0 - 1})
+        # 每個期間的評價：到期後跑贏（建議買）／跑輸（建議賣）大盤的比例
+        for c, ra in (P.get("ra") or {}).items():
+            i = D.idx.get(c)
+            if i is None:
+                continue
+            for k, hn in enumerate(H):
+                a = ra[k] if k < len(ra) else "N"
+                h = H[hn]
+                if a == "N" or t0 + h > last or isnan(tx[t0]) or isnan(tx[t0 + h]):
+                    continue
+                a0, a1 = A_all[i][t0], A_all[i][t0 + h]
+                if isnan(a0) or isnan(a1) or a0 <= 0:
+                    continue
+                ex = (a1 / a0 - 1) - (tx[t0 + h] / tx[t0] - 1)
+                rarows[hn]["buy" if a == "B" else "sell"].append({"d": d, "ex": ex, "today": t0 + h == last})
         if t0 + 1 <= last:
             for side, sign in (("long", 1), ("short", -1)):
                 picks = (P.get("dt") or {}).get(side) or []
@@ -171,6 +189,18 @@ def evaluate(D, A_all):
         out["rec"][side] = {"n": len(rs), "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
                             "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,
                             "up": round(sum(1 for r in rs if r["r"] > 0) / len(rs), 4) if rs else None}
+    out["rh"] = {}
+    for hn in H:
+        out["rh"][hn] = {}
+        for side in ("buy", "sell"):
+            rs = rarows[hn][side]
+            good = (lambda x: x > 0) if side == "buy" else (lambda x: x < 0)
+            td = [r for r in rs if r["today"]]
+            out["rh"][hn][side] = {"n": len(rs), "days": len({r["d"] for r in rs}),
+                                   "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,
+                                   "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
+                                   "today_n": len(td),
+                                   "today": round(sum(1 for r in td if good(r["ex"])) / len(td), 4) if td else None}
     for side in ("long", "short"):
         rs = dtrows[side]
         n = sum(r["n"] for r in rs)

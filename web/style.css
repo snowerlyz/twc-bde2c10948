@@ -575,3 +575,12 @@ details.more-info[open] > summary { padding-left: 6px; }
 .navsep { margin: 14px 12px 4px; font-size: 12px; color: var(--muted); letter-spacing: .08em; }
 .row.s3 .rt { min-width: 52px; height: 22px; font-size: 12px; padding: 0 8px; }
 @media (max-width: 640px) { .row.s3 .rt { min-width: 0; padding: 0 6px; font-size: 11px; } .rt.big { min-width: 80px; font-size: 16px; } }
+.gate { margin: 6px 0 2px; display: grid; gap: 4px; }
+.gate .gl { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; }
+.gate .gn { color: var(--ink-2); min-width: 44px; }
+.gate .num { font-size: 16px; }
+.gate .gs { font-size: 12px; padding: 0 8px; border-radius: 99px; }
+.gate .gs.ok { background: var(--brass-soft); color: var(--brass); }
+.gate .gs.warn { background: var(--surface-3); color: var(--brass-2); }
+.gate .gs.bad { background: var(--surface-3); color: var(--muted); text-decoration: none; border: 1px solid var(--line-2); }
+.gate .gs.na { color: var(--muted); }

@@ -18,6 +18,11 @@ MULTS = [0.5, 1.0, 1.5, 2.0]
 WINS = [60, 120]         # 看最近幾個「已揭曉」的交易日（每天依實測自動挑）
 MIN_VAL = 3e7            # 每天平均成交 3000 萬以上才給建議
 MARGIN = 0.0005
+# 準確度臨界值（使用者 2026-10-28 設定）：照評價操作後跑贏（建議買）／跑輸（建議賣）大盤的比例
+ACC_PASS = 0.60          # 60% 以上合格；暫停中的要回到這條線以上才恢復
+ACC_FAIL = 0.55          # 低於 55% 不合格 → 這個期間、這個方向自動改為中立
+ACC_DAYS = 60            # 看最近 60 個已揭曉的交易日
+ACC_MIN_N = 300          # 樣本太少（檔次）不下判斷
 
 
 def isnan(x):
@@ -31,7 +36,13 @@ def _q(xs, p):
     return xs[min(len(xs) - 1, max(0, int(len(xs) * p)))]
 
 
-def build(D, A_all, res, stocks, tuning=None):
+def _status(rate):
+    if rate is None:
+        return "資料不足"
+    return "合格" if rate >= ACC_PASS else ("警示" if rate >= ACC_FAIL else "不合格")
+
+
+def build(D, A_all, res, stocks, tuning=None, live=None):
     pct_hist = res.get("pct_hist") or {}
     comp_ic = res.get("comp_ic") or {}
     last = D.T - 1
@@ -178,6 +189,50 @@ def build(D, A_all, res, stocks, tuning=None):
         else:
             WIN, mlt, sides = WINS[0], 1.0, ()
         thr = BASE_THR[hn] * mlt
+
+        # ---- 準確度把關：最近 60 個已揭曉交易日（walk-forward，只用當時已知資料）＋前瞻實測
+        def hits(ts, sd):
+            rr = {"buy": [0, 0], "sell": [0, 0]}
+            for t in ts:
+                lb, _, _ = labels_at(t, thr, WIN, sd)
+                if lb is None:
+                    continue
+                mean, _, bins, _w = dec[t]
+                for bb in range(10):
+                    if lb[bb] == "buy":
+                        rr["buy"][0] += sum(1 for r in bins[bb] if r > mean)
+                        rr["buy"][1] += len(bins[bb])
+                    elif lb[bb] == "sell":
+                        rr["sell"][0] += sum(1 for r in bins[bb] if r < mean)
+                        rr["sell"][1] += len(bins[bb])
+            return rr
+        rec_h = hits(known[-ACC_DAYS:], sides) if sides else {"buy": [0, 0], "sell": [0, 0]}
+        tod_h = hits([u for u in known if u == last - h], sides) if sides else {"buy": [0, 0], "sell": [0, 0]}
+        lv = (((live or {}).get("rh") or {}).get(hn) or {})
+        prev_off = set((prev or {}).get("off") or [])
+        off, gate = set(), {}
+        for sd in ("buy", "sell"):
+            w_, n_ = rec_h[sd]
+            r_bt = w_ / n_ if n_ >= ACC_MIN_N else None
+            lx = lv.get(sd) or {}
+            r_lv = lx.get("win") if (lx.get("n") or 0) >= ACC_MIN_N else None
+            rates = [x for x in (r_bt, r_lv) if x is not None]
+            rate = min(rates) if rates else None
+            st = _status(rate)
+            if sd not in sides:
+                st = "未啟用"
+            elif rate is not None and ((sd in prev_off and rate < ACC_PASS) or rate < ACC_FAIL):
+                off.add(sd)
+            elif rate is None and sd in prev_off:
+                off.add(sd)
+            tw, tn = tod_h[sd]
+            gate[sd] = {"rate": None if rate is None else round(rate, 4), "bt": None if r_bt is None else round(r_bt, 4),
+                        "bt_n": n_, "live": None if r_lv is None else round(r_lv, 4), "live_n": lx.get("n") or 0,
+                        "status": st, "off": sd in off,
+                        "today": round(tw / tn, 4) if tn else None, "today_n": tn}
+        if chosen:
+            tun[hn]["off"] = sorted(off)
+        sides = tuple(x for x in sides if x not in off)
         # ---- 今天的建議
         lab, ex, ic = labels_at(last, thr, WIN, sides) if sides else (None, None, recent_ic(last))
         if ex is None:
@@ -197,7 +252,7 @@ def build(D, A_all, res, stocks, tuning=None):
                      "lo": q[b][0], "hi": q[b][1], "up": q[b][2], "b": b, "p": round(p, 4)}
         out["h"][hn] = {"thr": round(thr, 4), "mult": mlt, "win": WIN, "sides": list(sides),
                         "ic": None if ic is None else round(ic, 4),
-                        "active": lab is not None, "bt": chosen, "bt_all": bt,
+                        "active": lab is not None, "bt": chosen, "bt_all": bt, "gate": gate,
                         "ex": [round(e, 4) for e in ex] if ex else None,
                         "buy_bins": [b for b in range(10) if lab and lab[b] == "buy"],
                         "sell_bins": [b for b in range(10) if lab and lab[b] == "sell"]}
@@ -236,6 +291,13 @@ def build(D, A_all, res, stocks, tuning=None):
     out["buys"] = buys[:150]
     out["sells"] = sells[:150]
     out["n_buy"], out["n_sell"] = len(buys), len(sells)
+    out["acc_rule"] = {"pass": ACC_PASS, "fail": ACC_FAIL, "days": ACC_DAYS}
+    # 每天的準確度紀錄（看趨勢用，保留最近 120 天）
+    lg = dict(tun.get("acc_log") or {})
+    lg[out["day"]] = {hn: {sd: [g["rate"], g["today"], g["status"]] for sd, g in (x.get("gate") or {}).items()}
+                      for hn, x in out["h"].items()}
+    tun["acc_log"] = {k: lg[k] for k in sorted(lg)[-120:]}
+    out["acc_log"] = tun["acc_log"]
     return out, tun
 
 

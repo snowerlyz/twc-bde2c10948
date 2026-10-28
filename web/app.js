@@ -71,7 +71,7 @@ const GLOSS = {
   score: "分數 0～100，50 分代表看不出方向；越高越可能漲，越低越可能跌。75 分以上＝強烈看多，25 分以下＝強烈看空。分數綜合約 35 項指標：股價走勢、法人買賣、公司營收獲利、新聞消息，再加上大盤與美股等國際行情。短期看 1 週、中期看 1 個月、長期看 3 個月。",
   rel: "可信度＝最近分數準不準。每天會拿過去的分數和後來真正的漲跌對答案：最近常猜對，可信度就高；最近常猜錯，可信度就低，個股分數會自動往 50 靠攏；大盤分數則改以「過去一年大盤實際上漲的比例」為主。等它重新變準，可信度會自己回升。",
   tune: "模型每天收盤後會自我檢討：試好幾種做法（例如各項指標的比重要不要、要多快跟著最近表現調整），用過去一年的資料各模擬一遍，看哪一種猜得最準，就改用那一種。",
-  recrule: "評價怎麼來：每天把股票依分數分成 10 組，看過去每一組之後實際比大盤多賺或少賺多少。只有分數最高的幾組「過去平均明顯多賺、而且多數跑贏大盤」才標建議買；最低的幾組「明顯少賺、多數跑輸大盤」才標建議賣；其他都是中立。成交太少或處置股一律中立。每個期間、每個方向都要過去照做真的有效才會啟用，門檻每天依實測自動調整。",
+  recrule: "評價怎麼來：每天收盤後先檢查準確度（最近 60 個已揭曉交易日照評價操作，跑贏或跑輸大盤的比例），60% 以上合格、低於 55% 自動改為中立。每天把股票依分數分成 10 組，看過去每一組之後實際比大盤多賺或少賺多少。只有分數最高的幾組「過去平均明顯多賺、而且多數跑贏大盤」才標建議買；最低的幾組「明顯少賺、多數跑輸大盤」才標建議賣；其他都是中立。成交太少或處置股一律中立。每個期間、每個方向都要過去照做真的有效才會啟用，門檻每天依實測自動調整。",
   link: "連動：用過去約 200 個交易日統計，國外市場前一晚的漲跌，和這個類股隔天漲跌的關係。「連動高」代表常常同方向一起動；數字是平均關係，個別日子可能完全不同。",
   news: "收集鉅亨網、Yahoo 股市的財經新聞，和公司在公開資訊觀測站發布的重大訊息，依標題用字判斷偏好消息（利多）還是壞消息（利空）。這是用關鍵字粗略判斷，可能看錯，重要消息請點開原文確認。",
   glob: "台股常跟著國外走：美國股市（特別是半導體類股）、台積電在美國的股價、美元匯率、美國利率。這些已經算進大盤分數。美股是前一晚的收盤價。",
@@ -461,6 +461,22 @@ function raTitle(r, i) {
   if (r.rn) t += `（${r.rn}）`;
   return t;
 }
+// 準確度把關（照評價操作後跑贏／跑輸大盤的比例；臨界值見 recs.acc_rule）
+function gateLine(x, R) {
+  const g = (x && x.gate) || {}, rule = (R && R.acc_rule) || { pass: 0.6, fail: 0.55 };
+  const P = (v) => v == null ? "—" : Math.round(v * 100) + "%";
+  const one = (sd, nm) => {
+    const z = g[sd];
+    if (!z || z.status === "未啟用") return `<div class="gl"><span class="gn">${nm}</span><span class="muted">未啟用（過去照做沒有優勢）</span></div>`;
+    const c = z.status === "合格" ? "ok" : z.status === "警示" ? "warn" : z.status === "不合格" ? "bad" : "na";
+    return `<div class="gl"><span class="gn">${nm}</span><b class="num">${P(z.rate)}</b><span class="gs ${c}">${z.status}${z.off ? "・暫停" : ""}</span>${z.today != null ? `<span class="muted small">今天到期 ${P(z.today)}（${z.today_n} 檔）</span>` : ""}</div>`;
+  };
+  return `<div class="gate">${one("buy", "建議買")}${one("sell", "建議賣")}</div>`;
+}
+function gateRule(R) {
+  const r = (R && R.acc_rule) || { pass: 0.6, fail: 0.55, days: 60 };
+  return `準確度＝最近 ${r.days} 個已揭曉交易日，照評價操作後跑贏（建議買）或跑輸（建議賣）大盤的比例；有前瞻實測時取兩者較低者。${Math.round(r.pass * 100)}% 以上合格，${Math.round(r.fail * 100)}%～${Math.round(r.pass * 100)}% 警示，低於 ${Math.round(r.fail * 100)}% 不合格並自動改為中立，回到 ${Math.round(r.pass * 100)}% 以上才恢復。`;
+}
 // 排序強度：幾個期間一致 → 預期差距 → 該期間分數（建議買分數越高越前、建議賣越低越前）
 function raKey(r, side, hi) {
   const m = hi != null ? hi : raMain(r), sc = (r.s || [])[m] ?? 50;
@@ -557,12 +573,13 @@ async function vHome(tok) {
   view.innerHTML = `
   <h1 class="grad">今天的評價</h1>
   <p class="lead">依 ${dayFull(L.day)} 收盤資料，每檔股票分別給出短期（1 週）、中期（1 個月）、長期（3 個月）的<b>建議買／中立／建議賣</b>。只有過去實測真的有效的期間才會喊買或賣，沒把握就是中立。</p>
-  <section class="card section"><div class="card-h"><h2>三個期間的評價</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
+  <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
     const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
     return `<div class="rs1"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>
       <p class="rcnt"><span class="rt rb">建議買</span> <b class="num">${cnt[i].B}</b>　<span class="rt rs">建議賣</span> <b class="num">${cnt[i].S}</b></p>
-      <p class="note">${on ? `過去照做有效，啟用：${x.sides.map((s) => s === "buy" ? "建議買" : "建議賣").join("、")}` : "這個期間過去照做沒有明顯優勢，目前全部中立"}・大盤${esc(M.horizons[h].label)}</p></div>`;
-  }).join("")}</div></section>
+      ${gateLine(x, RC)}
+      <p class="note">${on ? `目前給出：${x.sides.map((s) => s === "buy" ? "建議買" : "建議賣").join("、")}` : "目前全部中立"}・大盤${esc(M.horizons[h].label)}</p></div>`;
+  }).join("")}</div><p class="note" style="margin:10px 0 0">${gateRule(RC)}</p></section>
   <section class="card flush section"><div class="card-h" style="padding:16px 22px 4px"><div class="seg" id="hside"><button data-s="B" class="on">建議買</button><button data-s="S">建議賣</button>${w.length ? '<button data-s="W">我的自選</button>' : ""}</div><a class="more" href="#/picks">看全部</a></div>
     <div class="list" id="hlist"></div></section>
   <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
@@ -601,7 +618,7 @@ async function vHome(tok) {
     }
     $("#hlist").innerHTML = arr.length ? rowsHead3("", 0) + arr.slice(0, 15).map((r) => stockRow(r, { mode: "three" })).join("") +
       (arr.length > 15 ? `<div style="padding:12px 22px"><a class="btn" href="#/picks">看全部 ${arr.length} 檔</a></div>` : "")
-      : `<div class="empty"><p>${side === "B" ? "今天沒有夠把握的建議買。" : "今天沒有建議賣。"}沒有把握時寧可中立。</p></div>`;
+      : `<div class="empty"><p>${side === "B" ? "今天沒有建議買。" : side === "S" ? "今天沒有建議賣。" : "還沒有自選股。"}${side !== "W" && RC && HZ.some((h) => RC.h[h] && RC.h[h].gate && Object.values(RC.h[h].gate).some((z) => z.off)) ? "有些期間的評價最近準確度未達合格線，已自動改為中立；每天盤後會重新檢查，達標就恢復。" : "沒有把握時寧可中立。"}</p></div>`;
     $$("#hside button").forEach((b) => b.classList.toggle("on", b.dataset.s === side));
     FX.enhance($("#hlist"));
   };
@@ -1407,17 +1424,20 @@ async function vPicks(tok) {
   const status = HZ.map((h, i) => {
     const x = R.h[h] || {};
     let st;
-    if (!x.sides || !x.sides.length) st = `<span class="pill p-bad sm">全部中立</span><span class="note">過去照做沒有明顯優勢，暫不喊買賣</span>`;
+    const gOff = x.gate && Object.values(x.gate).some((z) => z.off);
+    if ((!x.sides || !x.sides.length) && gOff) st = `<span class="pill p-bad sm">全部中立</span><span class="note">準確度未達標，自動暫停</span>`;
+    else if (!x.sides || !x.sides.length) st = `<span class="pill p-bad sm">全部中立</span><span class="note">過去照做沒有明顯優勢，暫不喊買賣</span>`;
     else if (!x.active) st = `<span class="pill p-bad sm">今天暫停</span><span class="note">模型最近不太準，先全部中立</span>`;
     else st = `<span class="pill p-good sm">啟用中</span><span class="note">${x.sides.map((s) => s === "buy" ? "建議買" : "建議賣").join("、")}</span>`;
-    return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${x.bt && x.sides && x.sides.length ? `<p class="note" style="margin:0">過去 ${x.bt.days} 個交易日，${btLine(x.bt, h)}。</p>` : ""}</div>`;
+    return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${gateLine(x, R)}${x.bt && x.sides && x.sides.length ? `<p class="note" style="margin:0">過去 ${x.bt.days} 個交易日，${btLine(x.bt, h)}。</p>` : ""}</div>`;
   }).join("");
   const nB = rated.filter((r) => r.ra.includes("B")).length, nS = rated.filter((r) => r.ra.includes("S")).length;
   view.innerHTML = `<h1 class="grad">評價清單</h1>
   <p class="lead">依 ${dayFull(R.day)} 收盤資料，每檔股票分別給出短、中、長期的「建議買／中立／建議賣」。<b>只在過去實測真的有效的期間才喊買賣</b>，沒有把握就是中立。</p>
   <section class="card"><div class="card-h"><h2>這套評價過去的成績</h2>${help("recrule")}<a class="more" href="#/check">看完整實測</a></div>
     <div class="grid g3 concls">${status}</div>
-    <p class="note" style="margin:10px 0 0">大盤目前：未來 1 週${M.short.label}、1 個月${M.mid.label}、3 個月${M.long.label}。「比大盤多賺」是相對表現；大盤若大跌，建議買的股票也可能下跌。</p></section>
+    <p class="note" style="margin:10px 0 0">${gateRule(R)}</p>
+    <p class="note" style="margin:6px 0 0">大盤目前：未來 1 週${M.short.label}、1 個月${M.mid.label}、3 個月${M.long.label}。「比大盤多賺」是相對表現；大盤若大跌，建議買的股票也可能下跌。</p></section>
   <div class="section filters"><div class="seg" id="pside"><button data-s="B">建議買（${nB}）</button><button data-s="S">建議賣（${nS}）</button></div>
     <div class="seg" id="phz"><button data-h="all">任一期間</button>${HZ.map((h, i) => `<button data-h="${i}">${HZ_NAME[i]}</button>`).join("")}</div></div>
   <section class="card flush section" id="plist"></section>
@@ -1462,7 +1482,8 @@ function ratingCard(d, r, RC) {
       const why = ((d.h[h] && (a === "B" ? d.h[h].pos : d.h[h].neg)) || []).slice(0, 2);
       if (why.length) body += `<p class="note" style="margin:6px 0 0">理由：${esc(why.join("；"))}</p>`;
     } else if (a === "N") {
-      body = `<p class="note" style="margin:4px 0 0">${esc(r.rn ? r.rn : !on ? "這個期間過去照做沒有明顯優勢，暫不喊買賣" : "條件在中間，沒有明顯優勢")}</p>`;
+      const gOff = st.gate && Object.values(st.gate).some((z) => z.off);
+      body = `<p class="note" style="margin:4px 0 0">${esc(r.rn ? r.rn : !on && gOff ? "這個期間的評價最近準確度未達標，自動暫停（改為中立）" : !on ? "這個期間過去照做沒有明顯優勢，暫不喊買賣" : "條件在中間，沒有明顯優勢")}</p>`;
     } else body = `<p class="note" style="margin:4px 0 0">ETF 或資料不足，不給評價</p>`;
     return `<div class="rcell ${a === "B" ? "buy" : a === "S" ? "sell" : ""}"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>${rTag(a, { big: true, title: raTitle(r, i) })}${body}</div>`;
   }).join("");

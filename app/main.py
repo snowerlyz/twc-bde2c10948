@@ -132,7 +132,15 @@ def analyze(prog=None):
     except Exception as e:
         sec_res = None
         log("類股／國際分析失敗：%s\n%s" % (e, traceback.format_exc()))
-    # 買賣建議（只在實測有效的地方才建議；門檻每天依實測自動挑）
+    # 前瞻實測先對答案（只用以前存的預測），讓買賣建議能依真實準確度把關
+    live = None
+    try:
+        import predlog as _pl
+        importlib.reload(_pl)
+        live = _pl.evaluate(D, A_all)
+    except Exception as e:
+        log("前瞻實測失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 買賣建議（只在實測有效的地方才建議；門檻每天依實測自動挑；準確度不合格自動改中立）
     recs = None
     try:
         import rec as _rec
@@ -141,7 +149,7 @@ def analyze(prog=None):
             prog.set(msg="產生買賣建議")
         tpath = os.path.join(DB, "tuning.json")
         tun_all = read_json(tpath, {}) or {}
-        recs, tun = _rec.build(D, A_all, res, stocks, tun_all)
+        recs, tun = _rec.build(D, A_all, res, stocks, tun_all, live)
         tun_all = read_json(tpath, {}) or {}
         tun_all["rec"] = tun
         write_json(tpath, tun_all)
@@ -153,7 +161,7 @@ def analyze(prog=None):
         import predlog as _pl
         importlib.reload(_pl)
         _pl.save(D, res, stocks, dt, (sec_res or {}).get("sectors"), recs)
-        write_json(os.path.join(RESULTS, "live.json"), _pl.evaluate(D, A_all))
+        write_json(os.path.join(RESULTS, "live.json"), live if live is not None else _pl.evaluate(D, A_all))
     except Exception as e:
         log("前瞻實測失敗：%s\n%s" % (e, traceback.format_exc()))
     by_code = {r["c"]: r for r in stocks}
