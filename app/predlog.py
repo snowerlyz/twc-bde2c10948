@@ -93,7 +93,7 @@ def evaluate(D, A_all):
     mrows = {hn: [] for hn in H}
     dtrows = {"long": [], "short": []}
     recrows = {"buy": [], "sell": []}
-    rarows = {hn: {"buy": [], "sell": []} for hn in H}
+    rarows = {hn: {"buy": [], "sell": [], "wbuy": [], "wsell": []} for hn in H}
     for d in files:
         t0 = pos.get(d)
         if t0 is None:
@@ -150,7 +150,9 @@ def evaluate(D, A_all):
                 if isnan(a0) or isnan(a1) or a0 <= 0:
                     continue
                 ex = (a1 / a0 - 1) - (tx[t0 + h] / tx[t0] - 1)
-                rarows[hn]["buy" if a == "B" else "sell"].append({"d": d, "ex": ex, "today": t0 + h == last})
+                side = {"B": "buy", "S": "sell", "b": "wbuy", "s": "wsell"}.get(a)
+                if side:
+                    rarows[hn][side].append({"d": d, "ex": ex, "today": t0 + h == last})
         if t0 + 1 <= last:
             for side, sign in (("long", 1), ("short", -1)):
                 picks = (P.get("dt") or {}).get(side) or []
@@ -192,9 +194,9 @@ def evaluate(D, A_all):
     out["rh"] = {}
     for hn in H:
         out["rh"][hn] = {}
-        for side in ("buy", "sell"):
+        for side in ("buy", "sell", "wbuy", "wsell"):
             rs = rarows[hn][side]
-            good = (lambda x: x > 0) if side == "buy" else (lambda x: x < 0)
+            good = (lambda x: x > 0) if side in ("buy", "wbuy") else (lambda x: x < 0)
             td = [r for r in rs if r["today"]]
             out["rh"][hn][side] = {"n": len(rs), "days": len({r["d"] for r in rs}),
                                    "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,

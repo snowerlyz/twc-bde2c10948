@@ -584,3 +584,7 @@ details.more-info[open] > summary { padding-left: 6px; }
 .gate .gs.warn { background: var(--surface-3); color: var(--brass-2); }
 .gate .gs.bad { background: var(--surface-3); color: var(--muted); text-decoration: none; border: 1px solid var(--line-2); }
 .gate .gs.na { color: var(--muted); }
+.rt.rbw { background: transparent; color: var(--up); border-color: color-mix(in srgb, var(--up) 55%, transparent); }
+.rt.rsw { background: transparent; color: var(--down); border-color: color-mix(in srgb, var(--down) 55%, transparent); }
+.rcell .kv.mini { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rcell { min-width: 0; }
