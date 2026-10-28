@@ -588,3 +588,72 @@ details.more-info[open] > summary { padding-left: 6px; }
 .rt.rsw { background: transparent; color: var(--down); border-color: color-mix(in srgb, var(--down) 55%, transparent); }
 .rcell .kv.mini { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .rcell { min-width: 0; }
+
+/* ================================================================ RWD 優化（手機／平板） */
+/* 底部選單：依實際項目數平均分配，不留空格 */
+@media (max-width: 860px) {
+  .tabbar { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .tabbar a { min-height: 44px; justify-content: center; }
+}
+/* 可左右滑動的區塊：右側淡出提示還有內容 */
+.seg.ovf, .tbl-wrap.ovf { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); }
+.seg.ovf.end, .tbl-wrap.ovf.end { -webkit-mask-image: none; mask-image: none; }
+/* 平板：兩欄排版保留，閱讀更有效率 */
+@media (min-width: 641px) and (max-width: 860px) {
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .grid.g3.concls, .grid.g3.rsum, .rcard .grid.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tbl th, .tbl td { padding: 10px 9px; }
+}
+/* 寬表格放不下時（手機一律）改成一筆一張小卡，不用左右滑 */
+.tbl-wrap.cdw { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+table.tbl.cards, table.tbl.cards tbody { display: block; width: 100%; }
+table.tbl.cards thead { display: none; }
+table.tbl.cards tr { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px 8px; padding: 14px 24px; border-top: 1px solid var(--line); }
+table.tbl.cards tbody tr:first-child { border-top: 0; }
+table.tbl.cards tbody tr:hover td { background: none; }
+table.tbl.cards tbody tr:active { background: var(--brass-soft); }
+table.tbl.cards td { display: block; padding: 0; border: 0; text-align: left; white-space: normal; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+table.tbl.cards td:first-child { grid-column: 1 / -1; padding-left: 0; font-size: 15px; }
+table.tbl.cards td[data-l]::before { content: attr(data-l); display: block; font-family: var(--font); font-size: 11.5px; font-weight: 400; color: var(--muted); margin-bottom: 3px; line-height: 1.3; }
+table.tbl.cards td.txt { grid-column: 1 / -1; min-width: 0; font-size: 13px; }
+table.tbl.cards td:empty { display: none; }
+table.tbl.cards td .rt { min-width: 0; padding: 0 8px; font-size: 12px; }
+
+@media (max-width: 640px) {
+  table.tbl.cards tr { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); padding: 13px 16px; }
+  /* 股票列表（三期間）：第一行名稱＋股價，第二行三個期間的評價 */
+  .row.s3 { grid-template-columns: repeat(3, minmax(0, 1fr)) 32px; row-gap: 8px; column-gap: 6px; padding: 12px 16px; }
+  .row.s3 > .nm { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; }
+  .row.s3 > .nm > b { grid-column: 1; font-size: 15.5px; }
+  .row.s3 > .nm > span:not(.pxm) { grid-column: 1 / -1; grid-row: 2; }
+  .row.s3 > .nm > span.pxm { grid-column: 2; grid-row: 1; text-align: right; font-size: 15px; font-family: var(--font-num); color: var(--ink); white-space: nowrap; overflow: visible; }
+  .row.s3 .rt { min-width: 0; width: 100%; max-width: 92px; padding: 0 6px; font-size: 12px; }
+  .row.head.s3 > div:first-child { grid-column: 1 / -1; }
+  .row.head.s3 { row-gap: 4px; }
+
+  /* 篩選切換鈕：兩個選項時平分寬度、文字可換行 */
+  .seg.fill { display: flex; width: 100%; }
+  .seg.fill button { flex: 1 1 0; white-space: normal; line-height: 1.3; padding: 7px 8px; }
+
+  /* 分數怎麼算：指標名稱完整顯示，類別放在名稱下方 */
+  .fw2 .b { grid-template-columns: minmax(0, 1fr) 42%; grid-template-areas: "nm bar" "v bar"; row-gap: 0; column-gap: 12px; }
+  .fw2 .b .nm { grid-area: nm; white-space: normal; font-size: 14px; line-height: 1.35; }
+  .fw2 .b .sbar { grid-area: bar; }
+  .fw2 .b .v { grid-area: v; text-align: left; font-weight: 400; color: var(--muted); font-size: 11.5px; }
+
+  .tbl th:first-child, .tbl td:first-child { padding-left: 14px; }
+}
+/* 很窄的手機（320px） */
+@media (max-width: 360px) {
+  .top::before { inset: 0 -12px; }
+  .main { padding-left: 12px; padding-right: 12px; }
+  .card { padding: 14px; }
+  .row.s3 { padding: 11px 12px; }
+  table.tbl.cards tr { padding: 12px; }
+  .tabbar a { font-size: 10.5px; }
+}
+/* 大螢幕：內容不要拉太寬，文字行長好讀 */
+@media (min-width: 1600px) {
+  #view { max-width: 1480px; }
+}
+@media (min-width: 861px) and (max-width: 1280px) { .g2 .gtbl .hide-s, .g2 .gtbl .hide-s2 { display: none; } }

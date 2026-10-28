@@ -513,6 +513,39 @@ function rowsHead3(sortKey, dir) {
 
 // ====================================================================== 路由
 const view = $("#view");
+// ---- RWD：手機上把寬表格轉成小卡、可滑動區塊加淡出提示
+function cardTables(root) {
+  (root || view).querySelectorAll(".tbl-wrap > table.tbl:not(.tune):not(.gtbl):not(.nocard)").forEach((t) => {
+    const rows = t.tBodies[0] ? t.tBodies[0].rows : [];
+    if (t.dataset.cd !== String(rows.length)) {
+      t.dataset.cd = rows.length;
+      const ths = [...t.querySelectorAll("thead th")].map((th) => {
+        const c = th.cloneNode(true);
+        c.querySelectorAll(".help").forEach((x) => x.remove());
+        c.querySelectorAll("small.hzt").forEach((x) => { x.textContent = "（" + x.textContent.trim() + "）"; });
+        return c.textContent.replace(/\s+/g, " ").trim();
+      });
+      for (const tr of rows) [...tr.children].forEach((td, i) => { if (i && ths[i] && !td.hasAttribute("data-l")) td.setAttribute("data-l", ths[i]); });
+    }
+    // 手機一律用小卡；平板、筆電只有在表格放不下時才改小卡
+    const wrap = t.parentElement;
+    t.classList.remove("cards"); wrap.classList.remove("cdw");
+    const need = innerWidth <= 640 || (wrap.clientWidth > 0 && t.scrollWidth > wrap.clientWidth + 2);
+    t.classList.toggle("cards", need); wrap.classList.toggle("cdw", need);
+  });
+}
+function markOverflow(root) {
+  (root || view).querySelectorAll(".seg, .tbl-wrap").forEach((el) => {
+    const o = el.scrollWidth > el.clientWidth + 2;
+    el.classList.toggle("ovf", o);
+    el.classList.toggle("end", o && el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
+    if (o && !el.dataset.ovl) { el.dataset.ovl = 1; el.addEventListener("scroll", () => el.classList.toggle("end", el.scrollLeft + el.clientWidth >= el.scrollWidth - 4), { passive: true }); }
+  });
+}
+let rwdT = 0;
+const rwdRun = () => { cancelAnimationFrame(rwdT); rwdT = requestAnimationFrame(() => { cardTables(); markOverflow(document); }); };
+new MutationObserver(rwdRun).observe(view, { childList: true, subtree: true });
+addEventListener("resize", rwdRun);
 let routeToken = 0;
 async function route() {
   const tok = ++routeToken;
@@ -585,7 +618,7 @@ async function vHome(tok) {
       ${gateLine(x, RC)}
       <p class="note">大盤${esc(M.horizons[h].label)}</p></div>`;
   }).join("")}</div><p class="note" style="margin:10px 0 0">${gateRule(RC)}</p></section>
-  <section class="card flush section"><div class="card-h" style="padding:16px 22px 4px"><div class="seg" id="hside"><button data-s="B" class="on">建議買／相對看好</button><button data-s="S">建議賣／相對看淡</button>${w.length ? '<button data-s="W">我的自選</button>' : ""}</div><a class="more" href="#/picks">看全部</a></div>
+  <section class="card flush section"><div class="card-h" style="padding:16px 22px 4px"><div class="seg fill" id="hside"><button data-s="B" class="on">建議買／相對看好</button><button data-s="S">建議賣／相對看淡</button>${w.length ? '<button data-s="W">我的自選</button>' : ""}</div><a class="more" href="#/picks">看全部</a></div>
     <div class="list" id="hlist"></div></section>
   <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
   <section class="card hero glow"><span class="glow-ring"></span>
@@ -815,7 +848,7 @@ function warrantTable(rows, showU) {
       <td><span class="q ${p.rec >= 70 ? "hi" : p.rec >= 50 ? "md" : "lo"}">${Math.round(p.rec)}</span></td>
       <td>${Math.round(p.q)}</td><td>${fmtPx(p.P)}</td><td class="${p.money >= 0 ? "" : "muted"}">${p.money >= 0 ? "價內 " : "價外 "}${(Math.abs(p.money) * 100).toFixed(1)}%</td>
       <td>${p.days}</td><td>${p.lev != null ? p.lev.toFixed(1) + " 倍" : "—"}</td>
-      <td>${p.iv != null ? (p.iv * 100).toFixed(0) + "%" : "—"} / ${p.hv != null ? (p.hv * 100).toFixed(0) + "%" : "—"}</td>
+      <td data-l="權證／股票波動">${p.iv != null ? (p.iv * 100).toFixed(0) + "%" : "—"} / ${p.hv != null ? (p.hv * 100).toFixed(0) + "%" : "—"}</td>
       <td>${p.spread != null ? (p.spread * 100).toFixed(1) + "%" : "無報價"}</td><td>${p.theta != null ? (p.theta * 100).toFixed(2) + "%" : "—"}</td>
       <td class="txt">${esc(p.why.join("；"))}</td></tr>`).join("")}</tbody></table></div>`;
 }
@@ -1440,8 +1473,8 @@ async function vPicks(tok) {
     <div class="grid g3 concls">${status}</div>
     <p class="note" style="margin:10px 0 0">${gateRule(R)}</p>
     <p class="note" style="margin:6px 0 0">大盤目前：未來 1 週${M.short.label}、1 個月${M.mid.label}、3 個月${M.long.label}。「比大盤多賺」是相對表現；大盤若大跌，建議買的股票也可能下跌。</p></section>
-  <div class="section filters"><div class="seg" id="pside"><button data-s="B">建議買／相對看好（${nB}）</button><button data-s="S">建議賣／相對看淡（${nS}）</button></div>
-    <div class="seg" id="phz"><button data-h="all">任一期間</button>${HZ.map((h, i) => `<button data-h="${i}">${HZ_NAME[i]}</button>`).join("")}</div></div>
+  <div class="section filters"><div class="seg fill" id="pside"><button data-s="B">建議買／相對看好（${nB}）</button><button data-s="S">建議賣／相對看淡（${nS}）</button></div>
+    <div class="seg fill" id="phz"><button data-h="all">任一期間</button>${HZ.map((h, i) => `<button data-h="${i}">${HZ_NAME[i]}</button>`).join("")}</div></div>
   <section class="card flush section" id="plist"></section>
   <p class="disclaimer">評價是依過去統計自動產生的參考，不保證獲利，也不是投資建議。停損、目標價是過去同類股票的常見漲跌範圍，請依自己的資金與風險承受度調整。「建議賣」表示預期表現落後大盤，持有者可考慮減碼，沒有持有的可以避開。</p>`;
   const draw = () => {
