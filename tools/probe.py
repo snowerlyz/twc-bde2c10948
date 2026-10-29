@@ -13,7 +13,7 @@ res = {}
 for sym in ("%5ETWII",):
     for host in ("query1", "query2"):
         try:
-            save("twii_max.json", "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=max&interval=1d" % (host, sym))
+            save("twii_max.json", "https://%s.finance.yahoo.com/v8/finance/chart/%s?period1=946684800&period2=%d&interval=1d" % (host, sym, int(time.time())))
             res[sym] = "ok"
             break
         except Exception as e:
