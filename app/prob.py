@@ -20,6 +20,9 @@ MIN_TRAIN = 40
 REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
+import os
+# 研究開關：額外條件（逗號列出 ivol、max），預設不開
+EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
 def available():
@@ -83,8 +86,19 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
             corr = np.where((vy > 0) & (vx > 0) & (n >= 20), cov / np.sqrt(np.where(vx * vy > 0, vx * vy, 1)), np.nan)
             rs60 = (np.log(A[:, t] / A[:, t - 60]) - np.log(tx[t] / tx[t - 60])) if t >= 60 else np.full(N, np.nan)
             lval = np.log1p(np.nan_to_num(V[:, t]))
-        ext[t] = np.c_[np.clip(np.nan_to_num(beta, nan=1.0), -1, 3), np.nan_to_num(corr), np.clip(np.nan_to_num(rs60), -1, 1),
-                       (lval - 18.0) / 2.0]
+        cols = [np.clip(np.nan_to_num(beta, nan=1.0), -1, 3), np.nan_to_num(corr), np.clip(np.nan_to_num(rs60), -1, 1),
+                (lval - 18.0) / 2.0]
+        if "ivol" in EXTRA:      # 特有波動（扣掉大盤連動後的波動）；文獻：Ang 等 2006，預期越高越差
+            with np.errstate(all="ignore"):
+                rv = np.where((vy > 0) & (n >= 20), (vx - cov * cov / np.where(vy > 0, vy, 1)) / np.maximum(n, 1), np.nan)
+                iv = np.sqrt(np.clip(rv, 0, None))
+            cols.append(np.clip(np.nan_to_num(iv * 40.0, nan=1.0), 0, 4))
+        if "max" in EXTRA:       # 近 20 天最大單日漲幅（樂透股）；文獻：Bali 等 2011，預期越高越差
+            seg = ra[:, max(0, t - 20):t]
+            with np.errstate(all="ignore"):
+                mx20 = np.where(np.isnan(seg), -np.inf, seg).max(axis=1) if seg.shape[1] else np.full(N, -np.inf)
+            cols.append(np.clip(np.where(np.isfinite(mx20), mx20, 0.0) * 10.0, 0, 1.5))
+        ext[t] = np.c_[tuple(cols)]
 
     out = {}
     for hn, h in H.items():
