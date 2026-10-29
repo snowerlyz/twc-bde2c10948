@@ -511,6 +511,20 @@ def run(D, A_all, say=None):
     last = T - 1
     pct = pct_hist.get(last, {})
     per = _per_stock(stored, pct_hist, univ_hist, ts, last)
+    # 隔天走勢型態與高低點範圍（有 numpy、lightgbm 時）
+    intra, intra_sum = None, None
+    try:
+        import intraday as _it
+        if _it.available() and os.environ.get("TWC_NO_INTRA") != "1":
+            if say:
+                say("當沖模型：預測隔天走勢型態與高低點")
+            r_ = _it.run(D, FA, DKEYS, val20, DT_MIN_VALUE, DT_MIN_PRICE)
+            if r_:
+                intra, intra_sum = r_
+    except Exception as e:
+        import traceback
+        from util import log
+        log("當沖走勢型態失敗：%s\n%s" % (e, traceback.format_exc()))
     scores = {}
     rows = []
     for i, p in pct.items():
@@ -528,9 +542,20 @@ def run(D, A_all, say=None):
             "c": code, "n": D.names.get(code, code), "m": D.market.get(code, ""),
             "px": s["c"][last], "chg": (s["c"][last] / s["ref"][last] - 1) if s["ref"][last] == s["ref"][last] and s["ref"][last] else 0,
             "p": round(p, 4), "atr": None if isnan(FA[i]["atr10"][last]) else round(FA[i]["atr10"][last], 4),
-            "val": round(val20[i][last] / 1e8, 2), "wl": wl, "ws": ws, "av": av, "hi": hi, "lo": lo,
+            "val": round(val20[i][last] / 1e8, 2), "wl": wl, "ws": ws, "av": av, "hi": hi, "lo": lo, "i": i,
             "pos": [x for x in pos if x][:3], "neg": [x for x in neg if x][:3],
         })
+
+    def _intra_of(i):
+        x = (intra or {}).get(i)
+        if not x:
+            return {}
+        out_ = {"up": x["up"], "dn": x["dn"], "dist": x["dist"]}
+        if x["sh"]:
+            sh = dict(x["sh"])
+            sh["why"] = _it.why_text(sh.pop("f"), FA[i], last, reason, (intra_sum or {}).get("mret"))
+            out_["sh"] = sh
+        return out_
 
     def pick(side):
         key = "wl" if side == "long" else "ws"
@@ -548,7 +573,7 @@ def run(D, A_all, say=None):
             out.append({"c": r["c"], "n": r["n"], "m": r["m"], "px": r["px"], "chg": round(r["chg"], 4), "ok": ok,
                         "score": round(win * 100, 1), "win": round(win, 3), "avg": round(avg, 4),
                         "tp": None if tp is None else round(tp, 4), "sl": None if sl is None else round(sl, 4),
-                        "atr": r["atr"], "val": r["val"], "why": why,
+                        "atr": r["atr"], "val": r["val"], "why": why, **_intra_of(r["i"]),
                         "al": 1 if r["c"] in al["warn"] else 0})
         return out
 
@@ -571,7 +596,7 @@ def run(D, A_all, say=None):
             "base_win": None if base_win is None else round(base_win, 4),
             "spread_avg": round(sum(s for _, s in spreads) / len(spreads), 5) if spreads else None,
             "spread_win": round(sum(1 for _, s in spreads if s > 0) / len(spreads), 4) if spreads else None,
-            "ic_roll": roll[-120:], "factors": fac,
+            "ic_roll": roll[-120:], "factors": fac, "intraday": intra_sum,
             "calib": [None if c is None else {k: (round(v, 4) if isinstance(v, float) else v) for k, v in c.items()} for c in calib],
         },
     }, scores

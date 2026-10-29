@@ -46,7 +46,9 @@ def save(D, res, stocks, dt, sectors=None, recs=None):
         "dt": {"long": [r["c"] for r in (dt or {}).get("long", []) if r.get("ok")],
                "short": [r["c"] for r in (dt or {}).get("short", []) if r.get("ok")],
                "long_all": [r["c"] for r in (dt or {}).get("long", [])[:10]],
-               "short_all": [r["c"] for r in (dt or {}).get("short", [])[:10]]},
+               "short_all": [r["c"] for r in (dt or {}).get("short", [])[:10]],
+               # 隔天走勢型態的預測（只記有把握的）
+               "sh": sorted({(r["c"], r["sh"]["k"]) for sd in ("long", "short") for r in (dt or {}).get(sd, []) if r.get("sh")})},
     }
     write_json(path, obj, gz=True)
 
@@ -80,6 +82,25 @@ def _corr(a, b):
     return sab / (saa * sbb) ** 0.5
 
 
+def _shape(s, t0):
+    """第 t0+1 天實際的走勢型態（規則和 intraday.label 相同）。"""
+    o, h, l, c, ref = (s[k][t0 + 1] for k in ("o", "h", "l", "c", "ref"))
+    rs = [(s["h"][u] - s["l"][u]) / s["ref"][u] for u in range(max(0, t0 - 9), t0 + 1)
+          if not isnan(s["h"][u]) and not isnan(s["l"][u]) and not isnan(s["ref"][u]) and s["ref"][u] > 0]
+    if any(isnan(x) for x in (o, h, l, c, ref)) or h <= l or len(rs) < 7 or ref <= 0:
+        return None
+    atr = sum(rs) / len(rs)
+    R = h - l
+    body, uw, lw = (c - o) / R, (h - max(o, c)) / R, (min(o, c) - l) / R
+    if R / ref < 0.6 * atr or (abs(body) < 0.2 and min(uw, lw) >= 0.3):
+        return "區間震盪"
+    if body >= 0.5:
+        return "一路走高"
+    if body <= -0.5:
+        return "一路走低"
+    return "先漲後跌" if uw >= lw else "先跌後漲"
+
+
 def evaluate(D, A_all):
     """用目前的行情，替所有已存的預測對答案。"""
     if not os.path.isdir(LOG_DIR):
@@ -93,6 +114,7 @@ def evaluate(D, A_all):
     mrows = {hn: [] for hn in H}
     dtrows = {"long": [], "short": []}
     recrows = {"buy": [], "sell": []}
+    shrows = []
     rarows = {hn: {"buy": [], "sell": [], "wbuy": [], "wsell": []} for hn in H}
     for d in files:
         t0 = pos.get(d)
@@ -154,6 +176,13 @@ def evaluate(D, A_all):
                 if side:
                     rarows[hn][side].append({"d": d, "ex": ex, "today": t0 + h == last})
         if t0 + 1 <= last:
+            for c, k in ((P.get("dt") or {}).get("sh") or []):
+                s = D.raw.get(c)
+                if not s:
+                    continue
+                y = _shape(s, t0)
+                if y is not None:
+                    shrows.append(y == k)
             for side, sign in (("long", 1), ("short", -1)):
                 picks = (P.get("dt") or {}).get(side) or []
                 rr = []
@@ -203,6 +232,7 @@ def evaluate(D, A_all):
                                    "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
                                    "today_n": len(td),
                                    "today": round(sum(1 for r in td if good(r["ex"])) / len(td), 4) if td else None}
+    out["dt"]["shape"] = {"n": len(shrows), "hit": round(sum(shrows) / len(shrows), 4) if shrows else None}
     for side in ("long", "short"):
         rs = dtrows[side]
         n = sum(r["n"] for r in rs)

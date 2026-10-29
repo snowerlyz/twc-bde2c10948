@@ -662,3 +662,10 @@ table.tbl.cards td .rt { min-width: 0; padding: 0 8px; font-size: 12px; }
 .pbl > span:first-child { font-size: 13px; color: var(--ink-2); }
 .pbl b { font-size: 22px; color: var(--brass); font-family: var(--font-num); }
 .pbl .note { font-size: 12px; }
+/* 當沖走勢型態 */
+label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.tag.shp { font-weight: 700; }
+.tag.sh0 { color: var(--up); } .tag.sh1 { color: var(--down); }
+.tag.sh2, .tag.sh3 { color: var(--brass); } .tag.sh4 { color: var(--ink-2); }
+.dttbl td.txt { min-width: 180px; }
+table.tbl.cards.dttbl td:nth-child(6), table.tbl.cards.dttbl td:nth-child(7) { grid-column: span 2; }
