@@ -669,3 +669,17 @@ label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 14px
 .tag.sh2, .tag.sh3 { color: var(--brass); } .tag.sh4 { color: var(--ink-2); }
 .dttbl td.txt { min-width: 180px; }
 table.tbl.cards.dttbl td:nth-child(6), table.tbl.cards.dttbl td:nth-child(7) { grid-column: span 2; }
+/* 大盤預測 */
+.mkcard .mk1 { min-width: 0; }
+.mkcard .mk1 h3 { margin: 0 0 8px; font-size: 16px; }
+.mkcard .mk1 h3 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+.mkp { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.mkp > span:nth-child(2) { font-size: 13px; color: var(--ink-2); }
+.mkp b { font-size: 24px; color: var(--brass); font-family: var(--font-num); }
+.mkcard .kv.mini { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mkcard .kv.mini b.sm2 { font-size: 15px; }
+.mkcard .kv.mini .note { display: block; font-size: 12px; }
+.mkcard .kv.mini .note.nw { white-space: nowrap; }
+.mkcard .kv.mini b { font-size: 17px; }
+.mkcard .kv.mini b.sm2 { font-size: 14px; }
+.mkcard .kv.mini .note.nw span, .mkcard .kv.mini .note span { display: inline; }

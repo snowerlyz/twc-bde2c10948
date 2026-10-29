@@ -90,6 +90,7 @@ const GLOSS = {
   foi: "外資在台指期押多還是押空的淨口數。正數＝押漲，負數＝押跌；最近的變化方向比數字大小更重要。",
   pc: "選擇權裡「賭跌」的部位 ÷「賭漲」的部位。在台灣，這個比值偏高時，常被解讀為下方支撐較強。",
   dtscore: "當沖分數：依今天收盤後的資料，估計下一個交易日「開盤買、收盤賣」能賺錢的機會。",
+  mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
   dtshape: "隔天走勢型態：依隔天的日 K（開盤→最高／最低→收盤）分成一路走高、一路走低、先漲後跌（衝高拉回）、先跌後漲（探底回升）、區間震盪五種。模型用今天收盤後已知的條件估每一種型態的機率，再用最近 100 個交易日、模型當時的預測對答案：只有某型態「預測到時真的出現」的比例，比一般情況高 10 個百分點以上、而且是 1.4 倍以上，才會對這個型態下預測；其他一律寫「沒把握，不預測」。只有日 K 資料、沒有分鐘資料，所以「先漲後跌」只代表全天高點明顯高於收盤，不保證高點一定在早盤。",
   dtrange: "高點／低點範圍：以隔天開盤價為基準，最高價大概會比開盤高多少、最低價大概會比開盤低多少。中間的數字是一半機會會超過的位置，括號是 8 成機會會落在的範圍；主要依據是這檔近 10 天的平均振幅，和過去 120 天條件相近股票的實際結果。下面附「約 X 元」是假設隔天平盤開出、用今天收盤價換算的，開盤若跳空要跟著調整。做多可把高點中間值當停利參考、低點範圍當停損參考（做空反過來）。",
   dtwin: "勝算＝扣掉手續費和稅之後，真的賺錢的機會。依這檔股票自己的各項當沖條件，用過去 60 個交易日、所有股票隔天的實際結果逐檔估算（每檔各自計算）。超過 50% 而且平均是賺的，才算有優勢。",
@@ -625,6 +626,8 @@ async function vHome(tok) {
   try { picks = (await api("warrant_picks")).picks.slice(0, 5); } catch { }
   try { RC = await api("recs"); } catch { }
   try { RP = await api("report"); } catch { }
+  let MD = null;
+  try { MD = await api("model"); } catch { }
   if (tok !== routeToken) return;
   const rated = L.stocks.filter((r) => r.ra && !r.etf);
   const cnt = HZ.map((h, i) => { const c = { B: 0, b: 0, S: 0, s: 0 }; rated.forEach((r) => { const a = r.ra[i]; if (a in c) c[a]++; }); return c; });
@@ -639,6 +642,7 @@ async function vHome(tok) {
       ${gateLine(x, RC)}
       <p class="note">大盤${esc(M.horizons[h].label)}</p></div>`;
   }).join("")}</div><p class="note" style="margin:10px 0 0">${gateRule(RC)}</p></section>
+  ${mktCard(L, MD)}
   <section class="card flush section"><div class="card-h" style="padding:16px 22px 4px"><div class="seg fill" id="hside"><button data-s="B" class="on">建議買／相對看好</button><button data-s="S">建議賣／相對看淡</button>${w.length ? '<button data-s="W">我的自選</button>' : ""}</div><a class="more" href="#/picks">看全部</a></div>
     <div class="list" id="hlist"></div></section>
   <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
@@ -1553,6 +1557,39 @@ function beatLine(x, st, up_) {
   const base = st && st.prob ? st.prob.base : null;
   const v = up_ === false ? 1 - x.pb : x.pb;
   return `<div class="pbl"><span>${up_ === false ? "跑輸大盤機率" : "跑贏大盤機率"}${help("beatprob")}</span><b class="num">${pctTxt(v)}</b>${base != null ? `<span class="note">一般股票 ${pctTxt(up_ === false ? 1 - base : base)}</span>` : ""}</div>`;
+}
+const HZ_TD = [5, 20, 60];
+function endDay(day, n) {
+  const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8));
+  d.setDate(d.getDate() + Math.round(n * 7 / 5));
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+function mktCard(L, MD) {
+  const M = L.market, MC = (MD && MD.market_check) || {};
+  if (!HZ.some((h) => M.horizons[h] && M.horizons[h].fc)) return "";
+  const pts = (v) => Math.round(v).toLocaleString("en-US");
+  const sg = (x) => `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(1)}%</span>`;
+  const cells = HZ.map((h, i) => {
+    const x = M.horizons[h], f = x.fc, c = MC[h] || {};
+    if (!f) return `<div class="mk1"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p class="note">資料不足</p></div>`;
+    const tone = f.p_up >= 0.6 ? "rbw" : f.p_up <= 0.4 ? "rsw" : "rn";
+    const word = f.p_up >= 0.6 ? "偏向上漲" : f.p_up <= 0.4 ? "偏向下跌" : "漲跌機會差不多";
+    const why = [...(x.pos || []).map((t) => "＋" + t), ...(x.neg || []).map((t) => "－" + t)].slice(0, 4);
+    return `<div class="mk1"><h3>${HZ_NAME[i]}<small>到 ${endDay(L.day, HZ_TD[i])} 左右</small></h3>
+      <div class="mkp"><span class="rt ${tone}">${word}</span><span>上漲機率</span><b class="num">${pctTxt(f.p_up)}</b></div>
+      <p class="note" style="margin:2px 0 8px">${f.since} 年來一般 ${pctTxt(f.p0)}・最近一年 ${pctTxt(f.p_year)}</p>
+      <div class="kv mini">
+        <div><span>到期時大概</span><b>${pts(f.med_lv)}</b><span class="note">${sg(f.med)}</span></div>
+        <div><span>8 成機會落在</span><b class="sm2">${pts(f.lo_lv)}～${pts(f.hi_lv)}</b><span class="note nw">${sg(f.lo)}～${sg(f.hi)}</span></div>
+        <div><span>期間內高點可能到</span><b>${pts(f.max50_lv)}</b><span class="note">1 成機會衝過 ${pts(f.max90_lv)}</span></div>
+        <div><span>期間內低點可能到</span><b>${pts(f.min50_lv)}</b><span class="note">1 成機會跌破 ${pts(f.min10_lv)}</span></div>
+      </div>
+      ${why.length ? `<p class="note" style="margin:8px 0 0">依據：${esc(why.join("；"))}${f.rel != null && f.rel < 0.3 ? "。模型最近判斷力不足，以歷史上漲比例為主" : ""}</p>` : (f.rel != null && f.rel < 0.3 ? `<p class="note" style="margin:8px 0 0">模型最近判斷力不足，以歷史上漲比例為主。</p>` : "")}
+      ${c.n ? `<p class="note" style="margin:4px 0 0">大盤分數過去兩年實測：說偏多的 ${c.bull_n} 天，${pctTxt(c.bull_hit)} 真的漲${c.bear_n ? `；說偏空的 ${c.bear_n} 天，${pctTxt(c.bear_hit)} 真的跌` : ""}（一律猜漲是 ${pctTxt(c.base_up)}）。${f.cov != null ? `範圍：近 5 年 8 成範圍實際涵蓋 ${pctTxt(f.cov)}。` : ""}</p>` : ""}
+    </div>`;
+  }).join("");
+  return `<section class="card section mkcard"><div class="card-h"><h2>${svgI("fut")} 大盤預測（加權指數 ${fmtPx(M.taiex)}）</h2>${help("mktfc")}<a class="more" href="#/check">看準不準</a></div>
+    <div class="grid g3 rsum">${cells}</div></section>`;
 }
 function ratingCard(d, r, RC) {
   const hs = (d.rec && d.rec.hs) || {};

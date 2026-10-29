@@ -282,6 +282,39 @@ def collect_global():
     return out
 
 
+TWII_LONG_PATH = os.path.join(DB, "twii_long.json")
+
+
+def collect_twii_long():
+    """加權指數 2000 年以來的每日收盤（Yahoo），給大盤預測估「長期上漲比例」與「漲跌範圍」用。"""
+    old = read_json(TWII_LONG_PATH, {}) or {}
+    for host in ("query1", "query2"):
+        try:
+            j = fetch_json("https://%s.finance.yahoo.com/v8/finance/chart/%%5ETWII?period1=946684800&period2=%d&interval=1d"
+                           % (host, int(time.time())), retries=2)
+            r = j["chart"]["result"][0]
+            gmtoff = r["meta"].get("gmtoffset") or 28800
+            reg = ((r["meta"].get("currentTradingPeriod") or {}).get("regular") or {})
+            still_open = time.time() < (reg.get("end") or 0)
+            live_day = dt.datetime.utcfromtimestamp((reg.get("start") or 0) + gmtoff).strftime("%Y%m%d") if reg.get("start") else None
+            series = {}
+            for ts, c in zip(r["timestamp"], r["indicators"]["quote"][0]["close"]):
+                if c is None:
+                    continue
+                d = dt.datetime.utcfromtimestamp(ts + gmtoff).strftime("%Y%m%d")
+                if still_open and d == live_day:
+                    continue
+                series[d] = round(float(c), 2)
+            if len(series) > 3000:
+                write_json(TWII_LONG_PATH, {"s": series, "_at": now_tw().strftime("%Y-%m-%d %H:%M")})
+                log("加權指數長期歷史：%d 天" % len(series))
+                return series
+        except Exception as e:
+            last = e
+    log("加權指數長期歷史：%s（沿用舊資料）" % last)
+    return old.get("s") or {}
+
+
 # ---------------------------------------------------------------- 外資持股比率、集保股權分散
 QFII_DIR = os.path.join(DB, "parts", "qfii")
 TDCC_DIR = os.path.join(DB, "parts", "tdcc")

@@ -32,6 +32,10 @@ SHRINK_DEFAULT = float(os.environ.get("TWC_SK", "30"))
 MKT_ROBUST = set(x for x in os.environ.get("TWC_MKT_ROBUST", "long").split(",") if x)
 # 研究開關：學大盤因子權重時，用「獨立樣本數」（天數÷h）決定要多相信資料（逗號列出期間）
 MKT_NINFO_OVL = set(x for x in os.environ.get("TWC_MKT_NINFO", "").split(",") if x)
+# 研究開關：大盤分數的「歷史上漲比例」三個期間都向二十多年長期比例收斂。
+# 2006～2026 逐日回測機率較準，但最近兩年（大多頭）表態猜對率下降（中期 72%→68%、長期 85%→79%），預設不開；
+# 大盤預測卡片的上漲機率則一律用長期比例校正（見 mktfc.py）。
+MKT_BASE_LONG = os.environ.get("TWC_MKT_BASE_LONG", "0") == "1"
 MKT_P0 = {"short": 0.56, "mid": 0.60, "long": 0.65}   # 台股長期「h 日後上漲」的大約比例（事前常識值）
 MIN_VALUE = 5e6        # 20 日均成交金額低於 500 萬的股票不列入模型檢驗
 ENGINE_VERSION = 9
@@ -885,6 +889,13 @@ def market_model(D, stock_close, stock_fi):
         Z[k] = z
     out = {"horizons": {}, "raw": {}, "series": {}, "check": {}}
     last = T - 1
+    # 加權指數 2000 年以來的長期歷史（有的話）：用來校正「歷史上漲比例」與估漲跌範圍
+    LONG = None
+    try:
+        import mktfc
+        LONG = mktfc.load(D)
+    except Exception as e:
+        log("大盤長期歷史：%s" % e)
     fut_ret = {}
     for hn in HN:
         h = H[hn]
@@ -972,7 +983,12 @@ def market_model(D, stock_close, stock_fi):
             if len(ups) < 40:
                 return None, 50.0
             p = sum(1 for r in ups if r > 0) / len(ups)
-            if hn in MKT_ROBUST:
+            p0 = LONG.prior(D.days[t], h) if LONG is not None else None
+            if p0 is not None and MKT_BASE_LONG:
+                # 有二十多年的歷史時：三個期間都向「長期上漲比例」收斂（2006～2026 逐日回測，比只看最近一年準）
+                n_eff = len(ups) / float(h)
+                p = (n_eff * p + 10.0 * p0) / (n_eff + 10.0)
+            elif hn in MKT_ROBUST:
                 # 一年內真正獨立的 h 日樣本不多，向台股長期常態（多數期間上漲）收斂，避免一次大跌就整年偏空
                 n_eff = len(ups) / float(h)
                 p = (n_eff * p + 10.0 * MKT_P0[hn]) / (n_eff + 10.0)
@@ -1009,6 +1025,27 @@ def market_model(D, stock_close, stock_fi):
             "neg": [mkt_reason(k, raw[k][last]) for c_, k in contrib[::-1][:3] if c_ < -0.05],
             "weights": {k: round(w, 4) for k, w in weights.items()},
         }
+        # ---- 大盤預測：上漲機率、到期時的漲跌範圍、期間內高低點（用長期歷史估分布）
+        if LONG is not None:
+            try:
+                import mktfc
+                # 上漲機率：模型讀數 ×可信度 ＋「最近一年上漲比例向二十多年長期比例收斂」×（1−可信度）
+                p0 = LONG.prior(D.days[last], h)
+                ups = [fr[u] for u in range(max(0, last - h - 250), last - h + 1) if not isnan(fr[u])]
+                p_tr = sum(1 for r in ups if r > 0) / len(ups) if ups else p0
+                n_eff = len(ups) / float(h)
+                p_base = (n_eff * p_tr + 10.0 * p0) / (n_eff + 10.0) if p0 is not None else p_tr
+                p_model = max(0.03, min(0.97, 0.5 + (raw_score - 50) / 40.0))
+                p_up = max(0.03, min(0.97, rel_m * p_model + (1 - rel_m) * p_base))
+                fc = mktfc.forecast(LONG, D.days[last], tx[last], h, p_up)
+                if fc:
+                    fc["p0"] = None if LONG.prior(D.days[last], h) is None else round(LONG.prior(D.days[last], h), 3)
+                    fc["p_year"] = None if p_tr is None else round(p_tr, 3)
+                    fc["rel"] = round(rel_m, 3)
+                    fc["cov"] = mktfc.coverage(LONG, h)
+                    out["horizons"][hn]["fc"] = fc
+            except Exception as e:
+                log("大盤預測範圍：%s" % e)
         # ---- 實測：每天當時算出的大盤分數 vs 之後真正的漲跌（前 40 天暖機不計）
         ev = [(t, fin_s[t], fr[t]) for t in range(40, T) if not isnan(fin_s[t]) and not isnan(fr[t])]
         evr = [(score_s[t], fr[t]) for t in range(40, T) if not isnan(score_s[t]) and not isnan(fr[t])]
