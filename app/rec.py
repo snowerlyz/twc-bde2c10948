@@ -90,11 +90,32 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
         val20[i] = out_[-1]
     out = {"day": D.days[last], "h": {}}
     tun = dict((tuning or {}).get("rec") or {})
+    # ---- 逐檔的「跑贏加權指數」機率（有 numpy 時）；評價的排序改用這個機率
+    PB = None
+    try:
+        import prob as _pb
+        if _pb.available() and os.environ.get("TWC_NO_PB") != "1":
+            PB = _pb.build(D, A_all, pct_hist, v20s, MIN_VAL)
+    except Exception as e:  # 機率模型失敗時，退回原本的分組統計
+        import traceback
+        from util import log
+        log("跑贏大盤機率模型失敗：%s\n%s" % (e, traceback.format_exc()))
+        PB = None
     per_stock = {}
     for hn, h in H.items():
         ph = pct_hist.get(hn) or {}
         if not ph:
             continue
+        pbh = (PB or {}).get(hn, {}).get("pb") or {}
+
+        def rank_of(u):
+            """第 u 天的排序依據：有機率就用機率的排名，沒有就用綜合分數的排名。"""
+            pb = pbh.get(u)
+            if not pb:
+                return ph[u]
+            order = sorted(pb, key=lambda i: pb[i])
+            n = len(order)
+            return {i: (j + 1) / n for j, i in enumerate(order)}
         # ---- 每天（結果已揭曉的）：每檔 (分數百分位, 報酬, 比加權指數多賺)
         data = {}
         for u in sorted(ph):
@@ -102,7 +123,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
                 continue
             bm = tx[u + h] / tx[u] - 1
             rows = []
-            for i, p in ph[u].items():
+            for i, p in rank_of(u).items():
                 if v20s[i][u] < MIN_VAL:
                     continue
                 a0, a1 = A_all[i][u], A_all[i][u + h]
@@ -198,7 +219,8 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             bt[sd + "_ok"] = kind == "ok"
         tun[hn] = {"cut": {sd: label[sd]["c"] for sd in label}, "kind": {sd: label[sd]["kind"] for sd in label}}
         # ---- 今天每檔股票
-        for i, p in (ph.get(last) or {}).items():
+        pbt = (PB or {}).get(hn, {}).get("today") or {}
+        for i, p in (rank_of(last) if last in ph else {}).items():
             a = "hold"
             for sd in ("buy", "sell"):
                 L_ = label[sd]
@@ -213,7 +235,11 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             else:
                 d[hn] = {"a": a, "ex": None if x["ex"] is None else round(x["ex"], 4), "lo": x["lo"], "hi": x["hi"],
                          "up": None if x["up"] is None else round(x["up"], 3), "p": round(p, 4)}
+            q = pbt.get(i)
+            if q:      # 逐檔的機率與預期（取代整組共用的數字）
+                d[hn].update({"pb": q["pb"], "up": q["pu"], "ex": q["ex"], "lo": q["lo"], "hi": q["hi"]})
         out["h"][hn] = {"sides": sides, "active": bool(sides), "gate": gate, "bt": bt,
+                        "prob": (PB or {}).get(hn, {}).get("track"),
                         "watch": [sd for sd in ("buy", "sell") if label[sd]["kind"] == "watch"]}
     # ---- 每檔股票的綜合建議
     by = {r["c"]: r for r in stocks}
@@ -233,6 +259,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
         r["ra"] = "".join({"buy": "B", "sell": "S", "wbuy": "b", "wsell": "s"}.get(hs.get(hn, {}).get("a"), "N") if ok else "N"
                           for hn in H)
         r["rx"] = [hs.get(hn, {}).get("ex") for hn in H]
+        r["rb"] = [hs.get(hn, {}).get("pb") for hn in H]
         if not ok:
             r["rn"] = rec.get("why")
         res.setdefault("_recs", {})[code] = rec
@@ -290,7 +317,7 @@ def _combine(hs, px, v20, disposed, row):
     # 選「超出門檻最多」的期間當主要建議
     best = max(pick, key=lambda hn: abs(hs[hn]["ex"] or 0) / BASE_THR[hn])
     x = hs[best]
-    out = {"a": act, "h": best, "htxt": HZ_TXT[best], "k": len(pick), "ex": x["ex"], "up": x["up"], "hs": hs,
+    out = {"a": act, "h": best, "htxt": HZ_TXT[best], "k": len(pick), "ex": x["ex"], "up": x["up"], "pb": x.get("pb"), "hs": hs,
            "p": x.get("p")}
     if px:
         if act in ("買進", "相對看好"):

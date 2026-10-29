@@ -657,3 +657,8 @@ table.tbl.cards td .rt { min-width: 0; padding: 0 8px; font-size: 12px; }
   #view { max-width: 1480px; }
 }
 @media (min-width: 861px) and (max-width: 1280px) { .g2 .gtbl .hide-s, .g2 .gtbl .hide-s2 { display: none; } }
+/* 跑贏大盤機率 */
+.pbl { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 2px 0 6px; padding: 8px 12px; border-radius: var(--r-md); background: var(--brass-soft); }
+.pbl > span:first-child { font-size: 13px; color: var(--ink-2); }
+.pbl b { font-size: 22px; color: var(--brass); font-family: var(--font-num); }
+.pbl .note { font-size: 12px; }

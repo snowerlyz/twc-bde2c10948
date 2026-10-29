@@ -300,6 +300,73 @@ def _tune(D, stored, univ_hist, ic_hist):
     return cfg
 
 
+DT_SHRINK = 0.6     # 往過去平均收斂的程度（實測：保留 60% 的差距最接近實際結果）
+
+
+def _per_stock(stored, pct_hist, univ_hist, ts, last):
+    """逐檔估計隔天當沖的勝算、平均報酬、最高／最低價。
+    用最近 CAL_WIN 天、每檔的所有當沖條件（不只綜合分數）做邏輯迴歸與線性迴歸，
+    再往過去平均收斂，避免前段班全部卡在同一個數字。需要 numpy；沒有時回傳 None。"""
+    try:
+        import numpy as np
+    except Exception:
+        return None
+    if last not in stored or len(ts) < 30:
+        return None
+
+    def feats(t):
+        univ, Rk = stored[t]
+        pc = pct_hist.get(t, {})
+        X = np.c_[np.array([pc.get(i, 0.5) for i in univ]), np.array([Rk[k] for k in DKEYS], dtype=np.float64).T] - 0.5
+        return univ, X
+    Xs, ys = [], []
+    for t in ts:
+        if t not in stored:
+            continue
+        out = univ_hist.get(t) or {}
+        univ, X = feats(t)
+        m = [j for j, i in enumerate(univ) if i in out]
+        if not m:
+            continue
+        Xs.append(X[m])
+        ys.append(np.array([out[univ[j]] for j in m], dtype=np.float64))
+    if not Xs:
+        return None
+    X, Y = np.concatenate(Xs), np.concatenate(ys)
+    if len(X) < 1500:
+        return None
+    Z = np.c_[np.ones(len(X)), X]
+    reg = np.diag(np.r_[0.0, np.ones(X.shape[1])])
+
+    def logit(y, l2=5.0):
+        w = np.zeros(Z.shape[1])
+        for _ in range(30):
+            p = 1 / (1 + np.exp(-np.clip(Z @ w, -30, 30)))
+            step = np.linalg.solve((Z * (p * (1 - p))[:, None]).T @ Z + l2 * reg, Z.T @ (p - y) + l2 * reg @ w)
+            w -= step
+            if np.abs(step).max() < 1e-7:
+                break
+        b = min(0.99, max(0.01, y.mean()))
+        return w, np.log(b / (1 - b))
+
+    def ridge(y, l2=50.0):
+        return np.linalg.solve(Z.T @ Z + l2 * reg, Z.T @ y), y.mean()
+    wl, bl = logit((Y[:, 0] - COST > 0).astype(float))
+    ws, bs = logit((-Y[:, 0] - COST > 0).astype(float))
+    ra, ma = ridge(Y[:, 0])
+    rh, mh = ridge(Y[:, 1])
+    rl, ml = ridge(Y[:, 2])
+    univ, X = feats(last)
+    Zt = np.c_[np.ones(len(X)), X]
+    k = DT_SHRINK
+    pl = 1 / (1 + np.exp(-(bl + k * (Zt @ wl - bl))))
+    ps = 1 / (1 + np.exp(-(bs + k * (Zt @ ws - bs))))
+    av = ma + k * (Zt @ ra - ma)
+    hi = np.maximum(mh + k * (Zt @ rh - mh), 0.0)
+    lo = np.minimum(ml + k * (Zt @ rl - ml), 0.0)
+    return {i: (float(pl[j]), float(ps[j]), float(av[j]), float(hi[j]), float(lo[j])) for j, i in enumerate(univ)}
+
+
 def run(D, A_all, say=None):
     T, codes = D.T, D.codes
     N = len(codes)
@@ -443,6 +510,7 @@ def run(D, A_all, say=None):
 
     last = T - 1
     pct = pct_hist.get(last, {})
+    per = _per_stock(stored, pct_hist, univ_hist, ts, last)
     scores = {}
     rows = []
     for i, p in pct.items():
@@ -453,6 +521,8 @@ def run(D, A_all, say=None):
         neg = [reason(k, FA[i][k][last], w) for w, k in contrib[::-1][:6] if w < -0.0003]
         wl, ws, av = interp(p, "win_long"), interp(p, "win_short"), interp(p, "avg")
         hi, lo = interp(p, "hi"), interp(p, "lo")
+        if per and i in per:      # 逐檔估計（取代「同一個分數區間共用一個數字」）
+            wl, ws, av, hi, lo = per[i]
         scores[code] = [None if wl is None else round(wl * 100, 1), None if ws is None else round(ws * 100, 1)]
         rows.append({
             "c": code, "n": D.names.get(code, code), "m": D.market.get(code, ""),
