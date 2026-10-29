@@ -683,3 +683,14 @@ table.tbl.cards.dttbl td:nth-child(6), table.tbl.cards.dttbl td:nth-child(7) { g
 .mkcard .kv.mini b { font-size: 17px; }
 .mkcard .kv.mini b.sm2 { font-size: 14px; }
 .mkcard .kv.mini .note.nw span, .mkcard .kv.mini .note span { display: inline; }
+/* 新手說明 */
+.guide h2 { margin: 0 0 8px; font-size: 18px; }
+.steps { margin: 0 0 8px; padding-left: 22px; display: grid; gap: 8px; line-height: 1.6; }
+.steps li::marker { color: var(--brass); font-weight: 700; }
+.legend { list-style: none; padding: 6px 22px 4px; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.legend .rt, .gloss .rt, .ssum .rt { font-size: 12px; }
+.ssum { margin: 0 0 12px; line-height: 1.7; }
+.ssum .note { display: block; margin-top: 2px; }
+.gloss li { line-height: 1.6; }
+.fold { margin-top: 10px; } .fold summary { cursor: pointer; color: var(--brass); }

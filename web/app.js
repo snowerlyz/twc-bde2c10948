@@ -634,17 +634,19 @@ async function vHome(tok) {
   const cntTxt = (c, side) => { const k = side, w = side.toLowerCase(); return c[k] ? `<span class="rt ${RA[k][1]}">${RA[k][0]}</span> <b class="num">${c[k]}</b>` : `<span class="rt ${RA[w][1]}">${RA[w][0]}</span> <b class="num">${c[w]}</b>`; };
   view.innerHTML = `
   <h1 class="grad">今天的評價</h1>
-  <p class="lead">依 ${dayFull(L.day)} 收盤資料，每檔股票分別給出短期（1 週）、中期（1 個月）、長期（3 個月）的<b>建議買／中立／建議賣</b>。準確度沒達標時不硬喊，改標「相對看好／相對看淡」並寫明準確度。</p>
+  <p class="lead">依 ${dayFull(L.day)} 收盤資料，替每檔股票打分：建議買、相對看好、中立、相對看淡、建議賣。準確度沒達標時不硬喊「建議」。</p>
+  ${guideCard(RC, cnt)}
   <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
     const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
     return `<div class="rs1"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>
       <p class="rcnt">${cntTxt(cnt[i], "B")}　${cntTxt(cnt[i], "S")}</p>
       ${gateLine(x, RC)}
       <p class="note">大盤${esc(M.horizons[h].label)}</p></div>`;
-  }).join("")}</div><p class="note" style="margin:10px 0 0">${gateRule(RC)}</p></section>
-  ${mktCard(L, MD)}
+  }).join("")}</div><details class="fold"><summary class="note">準確度怎麼算？</summary><p class="note" style="margin:6px 0 0">${gateRule(RC)}</p></details></section>
   <section class="card flush section"><div class="card-h" style="padding:16px 22px 4px"><div class="seg fill" id="hside"><button data-s="B" class="on">建議買／相對看好</button><button data-s="S">建議賣／相對看淡</button>${w.length ? '<button data-s="W">我的自選</button>' : ""}</div><a class="more" href="#/picks">看全部</a></div>
+    <ul class="note legend"><li>${rTag("B")}<span>過去照做多半跑贏大盤</span></li><li>${rTag("b")}<span>比大多數股票好，但還沒達標</span></li><li>${rTag("S")}<span>過去照做多半跑輸大盤</span></li><li>${rTag("s")}<span>比大多數股票差，但還沒達標</span></li><li><span>點股票可以看理由與準確度</span></li></ul>
     <div class="list" id="hlist"></div></section>
+  ${mktCard(L, MD)}
   <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
   <section class="card hero glow"><span class="glow-ring"></span>
     <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div>${mh.rel != null ? `<a class="relnote" href="#/check">可信度 <span class="pill ${relInfo(mh.rel).c}">${relInfo(mh.rel).t}</span></a>${help("rel")}` : ""}</div>
@@ -690,6 +692,27 @@ async function vHome(tok) {
   $$("[data-hz2]").forEach((b) => b.addEventListener("click", () => setHz(+b.dataset.hz2)));
   const ia = $("#indall");
   if (ia) ia.addEventListener("click", () => { $("#indbars").innerHTML = indBars(ind, 999); ia.remove(); });
+}
+// 給新手的一句話：今天該怎麼用這些評價（依上方選的期間）
+function guideCard(RC, cnt) {
+  const i = S.hz, h = HZ[i], x = (RC && RC.h[h]) || {}, g = x.gate || {}, c = cnt[i];
+  const P = (v) => v == null ? null : Math.round(v * 100) + "%";
+  const b = g.buy || {}, sl = g.sell || {};
+  let buy;
+  if (c.B) buy = `今天有 <b>${c.B} 檔「建議買」</b>。過去照這個評價買，${HZ_DAYS[i]}後約 <b>${P(b.rate) || "—"}</b> 的時候跑贏大盤。`;
+  else if (c.b) buy = `今天<b>沒有</b>股票達到「建議買」的標準。列出的 ${c.b} 檔「相對看好」只是比大多數股票好一些：過去這樣挑，${HZ_DAYS[i]}後只有 <b>${P(b.trail) || "—"}</b> 跑贏大盤${b.trail != null && b.trail < 0.5 ? "（不到一半）" : ""}。比較適合放進自選觀察，不要只因為它在清單上就買。`;
+  else buy = "今天沒有看好的股票。";
+  let sell;
+  if (c.S) sell = `<b>${c.S} 檔「建議賣」</b>：過去約 <b>${P(sl.rate) || "—"}</b> 的時候，它們${HZ_DAYS[i]}後真的比大盤差。手上有的話，可以考慮賣掉或至少不要再加碼；沒有的話就先別買。`;
+  else if (c.s) sell = `「相對看淡」${c.s} 檔：比大多數股票差一些，但還沒達到「建議賣」的準確度，手上有的話留意就好。`;
+  else sell = "今天沒有特別不看好的股票。";
+  return `<section class="card section guide"><h2>第一次看？先讀這裡（${HZ_NAME[i]}，約 ${HZ_SHORT[i]}）</h2>
+    <ol class="steps">
+      <li><span><b>想買股票：</b>${buy}</span></li>
+      <li><span><b>手上已經有股票：</b>在最上面的搜尋框輸入代號或名稱，看它是不是「建議賣」。${sell}</span></li>
+      <li><span><b>打算放多久？</b>放約一週選「短期」、約一個月選「中期」、約三個月選「長期」（最上面可以切換）。</span></li>
+    </ol>
+    <p class="note">「大盤」指加權指數（台積電等大公司占很大比重），「跑贏大盤」是比它漲得多（或跌得少）。大盤大跌時，看好的股票也可能跟著跌。<a href="#/help" style="color:var(--brass)">名詞解釋</a></p></section>`;
 }
 function indBars(ind, n) {
   const arr = [...ind].sort((a, b) => b.s[S.hz] - a.s[S.hz]).slice(0, n);
@@ -1612,12 +1635,39 @@ function ratingCard(d, r, RC) {
       if (acc != null) body += `<p class="note" style="margin:4px 0 0">${a === "b" || a === "s" ? "未達建議門檻，" : ""}這類評價最近準確度 ${Math.round(acc * 100)}%（${up_ ? "跑贏" : "跑輸"}加權指數的比例）</p>`;
     } else if (a === "N") {
       const gOff = st.gate && Object.values(st.gate).some((z) => z.off);
-      body = `${beatLine(x, st)}${x.pb != null && x.ex != null ? `<div class="kv mini"><div><span>預期比大盤</span><b class="${cls(x.ex)}">${(x.ex > 0 ? "+" : "") + (x.ex * 100).toFixed(1)}%</b></div><div><span>上漲機率</span><b>${pctTxt(x.up)}</b></div></div>` : ""}<p class="note" style="margin:4px 0 0">${esc(r.rn ? r.rn : "分數在中間，沒有明顯優勢")}</p>`;
+      body = `${beatLine(x, st)}${x.pb != null && x.ex != null ? `<div class="kv mini"><div><span>預期比大盤</span><b class="${cls(x.ex)}">${(x.ex > 0 ? "+" : "") + (x.ex * 100).toFixed(1)}%</b></div><div><span>上漲機率</span><b>${pctTxt(x.up)}</b></div></div>` : ""}<p class="note" style="margin:4px 0 0">${esc(r.rn ? r.rn : neutralWhy(x, st))}</p>`;
     } else body = `<p class="note" style="margin:4px 0 0">ETF 或資料不足，不給評價</p>`;
     return `<div class="rcell ${a === "B" ? "buy" : a === "S" ? "sell" : ""}"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>${rTag(a, { big: true, title: raTitle(r, i) })}${body}</div>`;
   }).join("");
-  return `<section class="card section rcard"><div class="grid g3">${cells}</div>
+  return `<section class="card section rcard">${stockSummary(r, hs, RC, px)}<div class="grid g3">${cells}</div>
     <p class="note" style="margin:10px 0 0">評價是依過去統計自動產生的參考，不保證獲利。「跑贏大盤機率」與「上漲機率」依這檔股票自己的條件逐檔估算；「預期比大盤」是過去機率和它相近的股票，之後比加權指數多賺（負數＝少賺）的中間值，也就是典型的一檔。${help("recrule")}</p></section>`;
+}
+// 中立時用白話說明（和跑贏大盤機率一致，不再一律說「分數在中間」）
+function neutralWhy(x, st) {
+  const base = st && st.prob ? st.prob.base : null;
+  if (x && x.pb != null && base != null) {
+    if (x.pb <= base - 0.03) return "跑贏大盤的機會比一般股票低，但還沒低到列入「建議賣」或「相對看淡」";
+    if (x.pb >= base + 0.03) return "比一般股票好一點，但還沒排進最看好的那一批";
+    return "和一般股票差不多，看不出明顯的好壞";
+  }
+  return "分數在中間，沒有明顯優勢";
+}
+// 個股頁最上方的一句話
+function stockSummary(r, hs, RC, px) {
+  const i = S.hz, a = raOf(r, i);
+  if (!a) return "";
+  const x = hs[HZ[i]] || {}, g = ((RC && RC.h[HZ[i]]) || {}).gate || {};
+  const P = (v) => v == null ? "—" : Math.round(v * 100) + "%";
+  const msg = {
+    B: `過去照這類評價買，約 ${P((g.buy || {}).rate)} 的時候跑贏大盤。`,
+    b: `比大多數股票好一些，但還沒達到「建議買」的標準（這類股票過去只有 ${P((g.buy || {}).trail)} 跑贏大盤），適合先觀察。`,
+    N: r.rn ? `${r.rn}。` : `${neutralWhy(x, (RC && RC.h[HZ[i]]) || {})}。`,
+    s: "比大多數股票差一些，但還沒達到「建議賣」的標準；手上有的話留意就好。",
+    S: `過去約 ${P((g.sell || {}).rate)} 的時候，這類股票之後比大盤差。手上有可以考慮賣掉或不要加碼，沒有就先別買。`,
+  }[a];
+  const lot = px ? px * 1000 : null;
+  const lotTxt = lot ? `買一張（1,000 股）約 ${lot >= 1e4 ? (lot / 1e4).toFixed(lot >= 1e5 ? 0 : 1) + " 萬" : fmtInt(Math.round(lot))} 元，也可以只買幾股（零股）。` : "";
+  return `<p class="ssum"><b>一句話（${HZ_NAME[i]}，約 ${HZ_SHORT[i]}）：</b>${rTag(a)} ${esc(msg)}${lotTxt ? `<span class="note">${lotTxt}</span>` : ""}</p>`;
 }
 function recBanner(rec, h) {
   if (!rec) return "";
@@ -1637,11 +1687,30 @@ async function vHelp(tok) {
   if (tok !== routeToken) return;
   const lan = (st.lan || []).map((ip) => `http://${ip}:${st.port || 8787}`);
   view.innerHTML = `<h1>使用說明</h1>
+  <section class="card section guide"><h2>新手 3 步驟</h2>
+    <ol class="steps">
+      <li><span><b>決定要放多久：</b>約一週看「短期」、約一個月看「中期」、約三個月看「長期」，在最上面切換。</span></li>
+      <li><span><b>看評價：</b>首頁「今天的評價」列出看好與看淡的股票；點進股票，最上面有一句話告訴你該怎麼看。</span></li>
+      <li><span><b>看準確度再決定：</b>每個評價旁都寫了「過去照做有幾成跑贏大盤」。不到一半就只是參考，不要重押；買賣前也要想好最多願意賠多少。</span></li>
+    </ol></section>
+  <section class="card section"><h2>名詞解釋</h2>
+    <ul class="facts gloss">
+      <li><span>${rTag("B")} 過去照這個評價買，最近 60 天至少 55% 的時候跑贏大盤（60% 以上算合格）。</span></li>
+      <li><span>${rTag("b")} 比大多數股票好，但準確度還沒到 55%，只是「比較好的一批」。</span></li>
+      <li><span>${rTag("N")} 看不出明顯好壞；成交太少或被限制交易（處置股）的股票也一律中立。</span></li>
+      <li><span>${rTag("s")}／${rTag("S")} 和上面相反：比較可能跑輸大盤。「建議賣」是手上有可考慮賣掉、沒有就別買；不是叫你放空。</span></li>
+      <li><span><b>大盤／加權指數：</b>全部上市股票加總的指數，台積電等大公司占很大比重，所以一般股票能跑贏它的機會本來就不到一半。</span></li>
+      <li><span><b>跑贏大盤機率：</b>這檔股票之後漲得比加權指數多（或跌得比它少）的機會。旁邊的「一般股票」是隨便挑一檔的機會，用來比較。</span></li>
+      <li><span><b>預期比大盤：</b>條件相近的股票，之後比加權指數多賺（正數）或少賺（負數）多少，取中間值。</span></li>
+      <li><span><b>停損參考／目標參考：</b>過去條件相近的股票，大約 2 成會跌破、2 成會漲過的價位。跌破停損參考時，代表和預期不同，可以考慮出場。</span></li>
+      <li><span><b>一張／零股：</b>台股一張是 1,000 股；錢不夠時可以只買幾股（零股）。</span></li>
+      <li><span><b>紅色／綠色：</b>台股習慣紅色是漲、綠色是跌。</span></li>
+    </ul></section>
   <div class="grid g2">
     <section class="card"><h2>分數怎麼看</h2>
       <p>每檔股票有三個分數，分別預測不同長度的未來：<b>短期＝1 週</b>（約 5 個交易日）、<b>中期＝1 個月</b>（約 20 個交易日）、<b>長期＝3 個月</b>（約 60 個交易日）。分數 0～100，50 分代表看不出方向。</p>
       <div class="bars" style="margin:10px 0">${[[85, "75 分以上：強烈看多"], [65, "60～75：偏多"], [50, "40～60：中立"], [33, "25～40：偏空"], [15, "25 分以下：強烈看空"]].map(([s, t]) => `<div class="b"><span>${pill(s)}</span><span>${t}</span><span></span></div>`).join("")}</div>
-      <p>分數綜合約 35 項指標，分成五類：</p>
+      <p>分數綜合約 50 項指標，分成五類：</p>
       <ul class="facts" style="margin:4px 0 10px">
         <li><span><b>股價走勢</b>：最近漲跌、有沒有站上平均價、量能變化。</span></li>
         <li><span><b>大戶動向</b>：外資、投信有沒有在買，散戶有沒有借錢追高。</span></li>
