@@ -48,7 +48,7 @@ TAX = 0.003
 TAX_DT = 0.0015
 TAX_ETF = 0.001
 INIT_CASH = 1_000_000
-POLL_SEC = 5
+POLL_SEC = 4
 MIS = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=%s&json=1&delay=0&_=%d"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 
@@ -101,6 +101,41 @@ def parse(x):
         "up": fnum(x.get("u")), "dn": fnum(x.get("w")),
         "bids": levels(x.get("b"), x.get("g")), "asks": levels(x.get("a"), x.get("f")),
     }
+
+
+YAHOO = "https://tw.stock.yahoo.com/_td-stock/api/resource/StockServices.stockList;fields=avgPrice%2Corderbook;symbols="
+
+
+def parse_yahoo(x):
+    """Yahoo 奇摩股市即時報價 → 統一格式（價量單位：元、張）。"""
+    raw = lambda k: fnum((x.get(k) or {}).get("raw")) if isinstance(x.get(k), dict) else fnum(x.get(k))
+    sym = x.get("symbol") or ""
+    code = sym.split(".")[0]
+    tm = x.get("regularMarketTime") or ""
+    try:
+        u = dt.datetime.strptime(tm[:19], "%Y-%m-%dT%H:%M:%S") + dt.timedelta(hours=8)
+        d, t, ts = u.strftime("%Y%m%d"), u.strftime("%H:%M:%S"), int((u - dt.timedelta(hours=8) - dt.datetime(1970, 1, 1)).total_seconds() * 1000)
+    except Exception:
+        d = t = None
+        ts = 0
+    bids, asks = [], []
+    for lv in x.get("orderbook") or []:
+        b, a = fnum(lv.get("bid")), fnum(lv.get("ask"))
+        bv, av = lv.get("bidVolK"), lv.get("askVolK")
+        if b and bv:
+            bids.append((round(b, 4), int(bv)))
+        if a and av:
+            asks.append((round(a, 4), int(av)))
+    vol = fnum(x.get("volumeK"))
+    if vol is None:
+        v = fnum(x.get("volume"))
+        vol = v / 1000.0 if v else 0
+    return {"c": code, "n": x.get("symbolName"), "ex": "otc" if sym.endswith(".TWO") else "tse", "d": d, "t": t, "ts": ts,
+            "last": raw("price"), "vol": int(vol or 0), "o": raw("regularMarketOpen"), "h": raw("regularMarketDayHigh"),
+            "l": raw("regularMarketDayLow"), "ref": raw("regularMarketPreviousClose"), "up": raw("limitUpPrice"),
+            "dn": raw("limitDownPrice"), "bids": bids, "asks": asks,
+            "vin": fnum(x.get("inMarket")) if x.get("inMarket") is not None else None,
+            "vout": fnum(x.get("outMarket")) if x.get("outMarket") is not None else None, "src": "yahoo"}
 
 
 def phase(t):
@@ -335,7 +370,16 @@ class Paper:
             if o["ahead"] is None:
                 o["ahead"] = size_now          # 剛出現在五檔內：排在所有人後面
                 return
-            traded = dv * 0.5 if (dv > 0 and lp is not None and abs(lp - P) < 1e-6) else 0.0
+            # 這段時間在我這個價位成交了多少：有內外盤資料時，買方看「內盤量」（賣方往下打到買價）、賣方看「外盤量」
+            side_v = None
+            if q0 and q0.get("vin") is not None and q1.get("vin") is not None:
+                side_v = max(0, (q1["vin"] - q0["vin"]) if B else (q1["vout"] - q0["vout"]))
+            best_prev = ((q0["bids"] if B else q0["asks"]) or [[None]])[0][0] if q0 else None
+            at_best = best_prev is not None and abs(best_prev - P) < 1e-6
+            if side_v is not None and (at_best or (lp is not None and abs(lp - P) < 1e-6)):
+                traded = float(min(side_v, dv)) if dv else float(side_v)
+            else:
+                traded = dv * 0.5 if (dv > 0 and lp is not None and abs(lp - P) < 1e-6) else 0.0
             if size_prev is not None and size_now < size_prev:
                 dec = size_prev - size_now
                 if traded > 0:
@@ -353,7 +397,10 @@ class Paper:
             # 我比所有人掛得好（自己是最佳價）：有人用更差的價成交，就會先成交到我
             o["ahead"] = 0.0
             if dv > 0 and lp is not None and ((B and lp <= P + 1e-6) or (not B and lp >= P - 1e-6)):
-                n = min(rem, max(1, int(dv * 0.5)))
+                sv = None
+                if q0 and q0.get("vin") is not None and q1.get("vin") is not None:
+                    sv = max(0, (q1["vin"] - q0["vin"]) if B else (q1["vout"] - q0["vout"]))
+                n = min(rem, max(1, int(sv if sv is not None else dv * 0.5)))
                 self._fill(o, P, n, "掛在最佳價，排到成交")
         else:
             o["ahead"] = None
@@ -692,6 +739,8 @@ class Feed:
         self.op = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx),
                                               urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.started = False
+        self.src = None
+        self.err_y = None
 
     def market_of(self, code):
         if not self.markets:
@@ -700,7 +749,35 @@ class Feed:
         return self.markets.get(code, "tse")
 
     def fetch(self, codes):
+        """先用 Yahoo 奇摩股市（約 3～8 秒更新、有內外盤）；失敗才用證交所 MIS（約 1 分鐘更新一次）。"""
         codes = [c for c in codes if c and c.isalnum()]
+        try:
+            out = self.fetch_yahoo(codes)
+            if out:
+                self.src = "Yahoo 奇摩股市"
+                return out
+        except Exception as e:
+            self.err_y = str(e)
+        self.src = "證交所（約 1 分鐘更新）"
+        return self.fetch_mis(codes)
+
+    def fetch_yahoo(self, codes):
+        import urllib.parse
+        out = []
+        for i in range(0, len(codes), 30):
+            part = codes[i:i + 30]
+            syms = ",".join("%s.%s" % (c, "TWO" if self.market_of(c) == "otc" else "TW") for c in part)
+            req = urllib.request.Request(YAHOO + urllib.parse.quote(syms, safe=".") + "&_=%d" % int(time.time() * 1000), headers={
+                "User-Agent": UA, "Referer": "https://tw.stock.yahoo.com/", "Accept": "application/json"})
+            with self.op.open(req, timeout=10) as r:
+                j = json.loads(r.read().decode("utf-8"))
+            out += [parse_yahoo(x) for x in (j if isinstance(j, list) else []) if x.get("symbol")]
+        got = time.time()
+        for q in out:
+            q["_got"] = got
+        return out
+
+    def fetch_mis(self, codes):
         out = []
         for i in range(0, len(codes), 40):
             part = codes[i:i + 40]
@@ -710,6 +787,10 @@ class Feed:
             with self.op.open(req, timeout=10) as r:
                 j = json.loads(r.read().decode("utf-8"))
             out += [parse(x) for x in j.get("msgArray") or [] if x.get("c")]
+        got = time.time()
+        for q in out:
+            q["_got"] = got
+            q["src"] = "mis"
         return out
 
     def codes(self):
@@ -739,7 +820,7 @@ class Feed:
         """畫面要看某一檔的五檔：記下來，背景會持續更新；沒有最新的就馬上抓一次。"""
         self.watch[code] = time.time()
         q = self.paper.q.get(code)
-        if not q or time.time() - q.get("_got", 0) > 20:
+        if not q or time.time() - q.get("_got", 0) > 8:
             try:
                 for x in self.fetch([code]):
                     x["_got"] = time.time()

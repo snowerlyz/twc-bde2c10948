@@ -166,7 +166,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "paper":
             pp, fd = paper_init()
             v = pp.view()
-            v["feed"] = {"err": fd.err, "last_ok": fd.last_ok, "now": now_tw().strftime("%Y-%m-%d %H:%M:%S")}
+            v["feed"] = {"err": fd.err, "last_ok": fd.last_ok, "src": fd.src, "now": now_tw().strftime("%Y-%m-%d %H:%M:%S")}
             return self._json(v)
         m = re.match(r"^paper/quote/([A-Za-z0-9]+)$", p)
         if m and SAFE.match(m.group(1)):

@@ -1982,7 +1982,7 @@ function renderAcct(v) {
     const pts = xs.map((x, i) => `${(i / (xs.length - 1) * W).toFixed(1)},${(H - (x - mn) / (mx - mn || 1) * H).toFixed(1)}`).join(" ");
     return `<svg viewBox="0 0 ${W} ${H}" class="pspark"><polyline points="${pts}" fill="none" stroke="var(--brass)" stroke-width="2"/></svg>`; })() : "";
   const f = v.feed || {};
-  $("#pacct").innerHTML = `<div class="card-h"><h2>我的模擬帳戶</h2><span class="note">${f.err ? `<span class="down">即時行情連線失敗：${esc(f.err)}</span>` : f.last_ok ? `即時行情 ${esc(f.last_ok)} 更新` : "等待即時行情"}</span></div>
+  $("#pacct").innerHTML = `<div class="card-h"><h2>我的模擬帳戶</h2><span class="note">${f.err ? `<span class="down">即時行情連線失敗：${esc(f.err)}</span>` : f.last_ok ? `即時行情 ${esc(f.last_ok)} 抓取${f.src ? `（${esc(f.src)}）` : ""}` : "等待即時行情"}</span></div>
     <div class="kv pkv">
       <div><span>總資產</span><b>${money(v.equity)}</b><span class="note">${smoney(v.equity - v.init)}（${v.ret >= 0 ? "+" : ""}${(v.ret * 100).toFixed(2)}%）</span></div>
       <div><span>現金</span><b>${money(v.cash)}</b><span class="note">可用 ${money(v.avail)}</span></div>
@@ -2096,7 +2096,7 @@ function renderBook() {
   const mx = Math.max(1, ...q.asks.map((x) => x[1]), ...q.bids.map((x) => x[1]));
   const chg = q.last && q.ref ? q.last / q.ref - 1 : null;
   const live = q.d === (paperV && paperV.feed ? paperV.feed.now.slice(0, 10).replace(/-/g, "") : "");
-  el.innerHTML = `<div class="card-h"><h2>${esc(q.n || pt.code)} <span class="muted num">${esc(pt.code)}</span></h2><span class="note">${live ? "" : "非今天的資料・"}${esc(q.t || "")}</span></div>
+  el.innerHTML = `<div class="card-h"><h2>${esc(q.n || pt.code)} <span class="muted num">${esc(pt.code)}</span></h2><span class="note">${live ? "" : "非今天的資料・"}成交時間 ${esc(q.t || "")}${q.vin != null ? `・內盤 ${money(q.vin)}／外盤 ${money(q.vout)} 張` : ""}</span></div>
     <div class="pquote"><b class="num">${fmtPx(q.last)}</b> ${chg != null ? chgHtml(chg) : ""}<span class="note">開 ${fmtPx(q.o)}・高 ${fmtPx(q.h)}・低 ${fmtPx(q.l)}・量 ${money(q.vol)} 張・漲停 ${fmtPx(q.up)}・跌停 ${fmtPx(q.dn)}</span></div>
     <table class="pbook"><tbody>
       ${asks.map(([p, s]) => `<tr class="ask" data-p="${p}"><td>賣</td><td class="num">${fmtPx(p)}</td><td><div class="pbar ask" style="width:${s / mx * 100}%"></div><span class="num">${s}</span></td><td>${mark(p, "S")}</td></tr>`).join("")}

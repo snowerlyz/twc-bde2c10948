@@ -137,6 +137,22 @@ def test_trigger_stop():
     print("觸價停損 OK：", p.s["closed"][-1]["pnl"])
 
 
+def test_queue_inside_volume():
+    p, c = mk()
+    c.t = T0.replace(hour=11)
+    q = snap("11:00:00", 100.5, 1000, [(100.0, 50)], [(100.5, 30)]); q.update(vin=400, vout=600)
+    p.on_quote(q)
+    o = p.place({"code": "1234", "side": "B", "qty": 5, "price": 100.0})
+    assert o["ahead"] == 50
+    q = snap("11:00:05", 100.5, 1040, [(100.0, 60)], [(100.5, 30)]); q.update(vin=430, vout=610)   # 內盤 30 張打到 100
+    p.on_quote(q)
+    assert abs(o["ahead"] - 20) < 1e-6, o["ahead"]
+    q = snap("11:00:10", 100.0, 1070, [(100.0, 40)], [(100.5, 30)]); q.update(vin=455, vout=615)   # 再 25 張 → 前面清空，輪到我 5 張
+    p.on_quote(q)
+    assert o["status"] == "filled", o
+    print("內外盤排隊 OK")
+
+
 def test_moc_and_plan_exit():
     p, c = mk()
     c.t = T0.replace(hour=10)
@@ -162,6 +178,6 @@ def test_moc_and_plan_exit():
 
 if __name__ == "__main__":
     for f in (test_queue_fill, test_take_and_settle, test_through_and_hidden, test_daytrade_short_and_eod,
-              test_preopen_auction_and_expiry, test_trigger_stop, test_moc_and_plan_exit):
+              test_preopen_auction_and_expiry, test_trigger_stop, test_moc_and_plan_exit, test_queue_inside_volume):
         f()
     print("全部通過")
