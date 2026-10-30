@@ -91,6 +91,7 @@ const GLOSS = {
   pc: "選擇權裡「賭跌」的部位 ÷「賭漲」的部位。在台灣，這個比值偏高時，常被解讀為下方支撐較強。",
   dtscore: "當沖分數：依今天收盤後的資料，估計下一個交易日「開盤買、收盤賣」能賺錢的機會。",
   mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
+  paperpos: "未實現損益＝現在用現價賣掉、扣掉手續費和證交稅之後，比買進成本（含買進手續費）多或少多少。停損／停利：成交價碰到你設定的價格，就自動以當下的買一價送出賣單（之後一樣要排隊才成交）。",
   dtshape: "隔天走勢型態：依隔天的日 K（開盤→最高／最低→收盤）分成一路走高、一路走低、先漲後跌（衝高拉回）、先跌後漲（探底回升）、區間震盪五種。模型用今天收盤後已知的條件估每一種型態的機率，再用最近 100 個交易日、模型當時的預測對答案：只有某型態「預測到時真的出現」的比例，比一般情況高 10 個百分點以上、而且是 1.4 倍以上，才會對這個型態下預測；其他一律寫「沒把握，不預測」。只有日 K 資料、沒有分鐘資料，所以「先漲後跌」只代表全天高點明顯高於收盤，不保證高點一定在早盤。",
   dtrange: "高點／低點範圍：以隔天開盤價為基準，最高價大概會比開盤高多少、最低價大概會比開盤低多少。中間的數字是一半機會會超過的位置，括號是 8 成機會會落在的範圍；主要依據是這檔近 10 天的平均振幅，和過去 120 天條件相近股票的實際結果。下面附「約 X 元」是假設隔天平盤開出、用今天收盤價換算的，開盤若跳空要跟著調整。做多可把高點中間值當停利參考、低點範圍當停損參考（做空反過來）。",
   dtwin: "勝算＝扣掉手續費和稅之後，真的賺錢的機會。依這檔股票自己的各項當沖條件，用過去 60 個交易日、所有股票隔天的實際結果逐檔估算（每檔各自計算）。超過 50% 而且平均是賺的，才算有優勢。",
@@ -124,6 +125,7 @@ const ICON = {
   model: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 14.5h2"/><path d="M6 6l9-3 1 3"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
   news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2V5Z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 16h4"/>',
@@ -138,6 +140,7 @@ const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor
 
 const NAV = [
   ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
+  ["#/paper", "模擬交易", "wallet"],
   null,
   ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
   ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
@@ -595,6 +598,7 @@ async function route() {
     else if (page === "sector") await vSector(tok, decodeURIComponent(arg));
     else if (page === "global") await vGlobal(tok);
     else if (page === "menu") vMenu();
+    else if (page === "paper") await vPaper(tok, decodeURIComponent(arg || ""));
     else if (page === "help") await vHelp(tok);
     else await vHome(tok);
   } catch (e) {
@@ -793,7 +797,8 @@ async function vStock(tok, code) {
     <div class="px" data-count="${last[4]}" data-dec="${last[4] >= 1000 ? 0 : last[4] >= 100 ? 1 : 2}">${fmtPx(last[4])}</div><div class="chg">${chgHtml(chg)}</div>
     <div class="shb">${starBtn(code).replace('class="star', 'class="btn star').replace("</button>", "<span>自選</span></button>")}
       ${Array.isArray(d.dt) && d.dt[0] != null ? `<a class="btn" href="#/daytrade" title="下一個交易日當沖、扣掉手續費和稅後賺錢的機會">當沖勝算　多 <b class="num">${Math.round(d.dt[0])}%</b>　空 <b class="num">${Math.round(d.dt[1])}%</b></a>` : ""}
-      ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}</div>
+      ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}
+      ${S.status && S.status.static ? "" : `<a class="btn" href="#/paper/${code}">模擬下單</a>`}</div>
   </div>
   ${ratingCard(d, r, RC)}
   <details class="card more-info section"><summary>分數、上漲機會與理由（${HZ_NAME[S.hz]}）</summary>
@@ -1876,3 +1881,238 @@ function renderTicker() {
     navigator.serviceWorker.register("sw.js").catch(() => { });
   }
 })();
+
+// ====================================================================== 模擬交易
+const PTAG = { dt: "當沖", short: "短線（約 1 週）", mid: "波段（約 1 個月）", long: "長線（約 3 個月）", free: "自由操作" };
+const pt = { code: "", side: "B", dt: false, tag: "short", tif: "ROD", kind: "LMT", qty: 1, price: "", trig: false, trigPx: "", trigDir: "le" };
+let paperTimer = null, paperQ = null, paperV = null, paperResetArm = false;
+const ptick = (p) => p < 10 ? 0.01 : p < 50 ? 0.05 : p < 100 ? 0.1 : p < 500 ? 0.5 : p < 1000 ? 1 : 5;
+const pround = (p) => { const t = ptick(p); return Math.round(Math.round(p / t) * t * 100) / 100; };
+const money = (x) => x == null ? "—" : (x < 0 ? "−" : "") + Math.abs(Math.round(x)).toLocaleString("en-US");
+const smoney = (x) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${money(x)}</span>`;
+async function papi(path, body) {
+  const r = await fetch(path ? "api/paper/" + path : "api/paper", { method: body ? "POST" : "GET", cache: "no-store", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+  if (!r.ok || j.error) throw new Error(j.error || "HTTP " + r.status);
+  return j;
+}
+async function vPaper(tok, arg) {
+  if (S.status && S.status.static) {
+    view.innerHTML = `<h1 class="grad">模擬交易</h1>
+      <section class="card empty"><h2>模擬交易要用電腦版</h2>
+      <p>模擬交易要每 5 秒向證交所抓即時五檔和成交量，才能模擬「排隊、輪到才成交」。證交所的即時行情不允許網頁直接讀取，所以只能由電腦版（在你的電腦上執行的台股羅盤）去抓。</p>
+      <p>在電腦開啟「啟動台股羅盤.bat」，就能使用；同一個 Wi-Fi 的手機也可以連到電腦版操作（網址在電腦版的「使用說明」）。</p>
+      <a class="btn" href="#/help">看使用說明</a></section>`;
+    return;
+  }
+  if (arg) { pt.code = arg; pt.price = ""; }
+  view.innerHTML = `<h1 class="grad">模擬交易</h1>
+  <p class="lead">用證交所的<b>即時五檔與成交量</b>模擬真實下單：送出後不是馬上成交，而是依你下單當下的排隊位置，等前面的單被成交掉、輪到你才成交。可以做現股（短線、波段、長線）和當沖，賣出時依手續費、證交稅結算真正的損益。不會動到真的錢。</p>
+  <section class="card section" id="pacct"><p class="note">讀取帳戶中…</p></section>
+  <div class="grid g2 section">
+    <section class="card" id="pticket"></section>
+    <section class="card" id="pbook"><p class="note">輸入股票代號，就會顯示即時五檔。</p></section>
+  </div>
+  <section class="card flush section" id="porders"></section>
+  <section class="card flush section" id="ppos"></section>
+  <section class="card flush section" id="pclosed"></section>
+  <details class="card more-info section"><summary>怎麼模擬排隊與成交</summary>
+    <ul class="plain">
+      <li><b>直接成交：</b>買價 ≥ 最佳賣價（或賣價 ≤ 最佳買價）時，依畫面上的五檔掛單由好到差成交，數量最多就是畫面上的掛單量。</li>
+      <li><b>排隊：</b>沒成交的部分在你的價位排隊。價位已經有人掛單，就排在所有人後面（前面的張數＝當下的掛單量）；比最佳價還好，你就是第一個；比五檔還差，看不到前面有多少，只能等價格到。</li>
+      <li><b>往前移：</b>之後每 5 秒，依你這個價位的成交量與掛單量變化估計前面被成交掉多少（掛單減少但不是成交的部分，當作有人取消，依比例算）；前面清空以後再成交的量才是你的。成交價穿過你的價位，代表你的價位已經被吃光，全部成交。</li>
+      <li><b>開盤、收盤：</b>9:00 前下的單參加開盤集合競價，13:25～13:30 參加收盤集合競價：價格比成交價好就全部成交，剛好一樣就排隊。</li>
+      <li><b>當沖：</b>勾「當沖」可以先買後賣或先賣後買，證交稅 0.15%。先買沒賣掉的收盤後轉成現股；先賣沒買回的，以收盤價強制回補。</li>
+      <li><b>結算：</b>手續費 0.1425% × 折扣（每筆最低 20 元）；賣出證交稅 0.3%（ETF 0.1%、當沖 0.15%）。賣出時才結算已實現損益；未實現損益已先扣掉「現在賣掉」要付的手續費和稅。款項以成交當下扣款、入帳簡化（實際是 T+2 交割）。</li>
+      <li><b>限制：</b>看不到每一筆委託，排隊位置是依公開五檔與成交量估計；零股、融資融券還沒有模擬。電腦版開著、而且是交易時間，才會撮合。</li>
+    </ul></details>`;
+  renderTicket();
+  await paperRefresh(tok);
+  clearInterval(paperTimer);
+  paperTimer = setInterval(() => { if (!location.hash.startsWith("#/paper")) { clearInterval(paperTimer); return; } if (!document.hidden) paperRefresh(); }, 3000);
+}
+async function paperRefresh(tok) {
+  try {
+    const [v, q] = await Promise.all([papi(""), pt.code ? papi("quote/" + pt.code).catch(() => null) : Promise.resolve(null)]);
+    if (tok != null && tok !== routeToken) return;
+    if (!location.hash.startsWith("#/paper")) return;
+    paperV = v; paperQ = q && q.q;
+    if (paperQ && !pt.price && pt.kind === "LMT") { const p0 = paperQ.last || (paperQ.bids[0] || [])[0]; if (p0) { pt.price = p0; const ip = $("#pprice"); if (ip) ip.value = p0; } }
+    renderAcct(v); renderBook(); renderOrders(v); renderPos(v); renderClosed(v); updEstimate();
+  } catch (e) {
+    const a = $("#pacct"); if (a) a.innerHTML = `<p class="note">讀取模擬帳戶失敗：${esc(e.message)}。請確認電腦版已更新並重新開啟。</p>`;
+  }
+}
+function renderAcct(v) {
+  const hist = v.hist || [];
+  const spark = hist.length >= 2 ? (() => { const xs = hist.map((h) => h.eq), mn = Math.min(...xs, v.init), mx = Math.max(...xs, v.init), W = 260, H = 46;
+    const pts = xs.map((x, i) => `${(i / (xs.length - 1) * W).toFixed(1)},${(H - (x - mn) / (mx - mn || 1) * H).toFixed(1)}`).join(" ");
+    return `<svg viewBox="0 0 ${W} ${H}" class="pspark"><polyline points="${pts}" fill="none" stroke="var(--brass)" stroke-width="2"/></svg>`; })() : "";
+  const f = v.feed || {};
+  $("#pacct").innerHTML = `<div class="card-h"><h2>我的模擬帳戶</h2><span class="note">${f.err ? `<span class="down">即時行情連線失敗：${esc(f.err)}</span>` : f.last_ok ? `即時行情 ${esc(f.last_ok)} 更新` : "等待即時行情"}</span></div>
+    <div class="kv pkv">
+      <div><span>總資產</span><b>${money(v.equity)}</b><span class="note">${smoney(v.equity - v.init)}（${v.ret >= 0 ? "+" : ""}${(v.ret * 100).toFixed(2)}%）</span></div>
+      <div><span>現金</span><b>${money(v.cash)}</b><span class="note">可用 ${money(v.avail)}</span></div>
+      <div><span>股票市值</span><b>${money(v.mv)}</b><span class="note">未實現 ${smoney(v.unreal)}</span></div>
+      <div><span>已實現損益</span><b>${smoney(v.realized)}</b><span class="note">今天 ${smoney(v.today_realized)}</span></div>
+      <div><span>已付手續費／稅</span><b>${money(v.fees + v.taxes)}</b><span class="note">手續費 ${money(v.fees)}・稅 ${money(v.taxes)}</span></div>
+    </div>
+    ${Object.keys(v.by_tag || {}).length ? `<p class="note" style="margin:10px 0 0">已結算：${Object.entries(v.by_tag).map(([k, b]) => `${PTAG[k] || k} ${b.n} 筆、賺錢 ${Math.round(b.win / b.n * 100)}%、合計 ${smoney(b.pnl)}`).join("；")}</p>` : ""}
+    ${spark ? `<div style="margin-top:8px">${spark}<span class="note">每天收盤的總資產</span></div>` : ""}
+    <p class="note" style="margin:10px 0 0">起始資金 ${money(v.init)}・手續費 ${Math.round(v.disc * 10 * 10) / 10} 折・建立於 ${esc(v.created || "")}　
+      <button class="btn sm" id="preset">${paperResetArm ? "確定要全部清空重來？再按一次" : "重設帳戶"}</button>
+      ${paperResetArm ? `<label class="chk">起始資金 <input id="pinit" type="number" value="${v.init}" step="100000" min="100000" style="width:120px"></label> <label class="chk">折扣 <input id="pdisc" type="number" value="${v.disc}" step="0.05" min="0.1" max="1" style="width:70px"></label> <button class="btn sm" id="pcancelreset">先不要</button>` : ""}</p>`;
+  $("#preset").onclick = async () => {
+    if (!paperResetArm) { paperResetArm = true; return renderAcct(v); }
+    try { await papi("reset", { cash: +($("#pinit") || {}).value || 1000000, disc: +($("#pdisc") || {}).value || 0.6 }); } catch (e) { alertBox(e.message); }
+    paperResetArm = false; paperRefresh();
+  };
+  const cr = $("#pcancelreset"); if (cr) cr.onclick = () => { paperResetArm = false; renderAcct(v); };
+}
+function alertBox(msg, ok) {
+  const b = $("#pmsg"); if (b) { b.className = "pmsg " + (ok ? "ok" : "bad"); b.textContent = msg; }
+}
+function renderTicket() {
+  const opts = (S.latest && S.latest.stocks || []).filter((r) => r.val >= 0.05).map((r) => `<option value="${r.c}">${esc(r.n)}</option>`).join("");
+  $("#pticket").innerHTML = `<div class="card-h"><h2>下單</h2></div>
+    <div class="pform">
+      <label>股票<input id="pcode" list="pcodes" value="${esc(pt.code)}" placeholder="代號，例如 2330" autocomplete="off" inputmode="numeric"><datalist id="pcodes">${opts}</datalist></label>
+      <div class="seg fill" id="pside"><button data-v="B" class="buy">買進</button><button data-v="S" class="sell">賣出</button></div>
+      <div class="prow">
+        <label class="chk"><input type="checkbox" id="pdt"${pt.dt ? " checked" : ""}> 當沖（可先賣後買）</label>
+        <label>策略<select id="ptag">${Object.entries(PTAG).map(([k, t]) => `<option value="${k}"${pt.tag === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
+      </div>
+      <div class="prow">
+        <label>價格<span class="pstep"><button type="button" id="pminus">−</button><input id="pprice" type="number" step="0.01" value="${esc(pt.price)}"${pt.kind === "MKT" ? " disabled" : ""}><button type="button" id="pplus">＋</button></span></label>
+        <label>張數<input id="pqty" type="number" min="1" max="499" value="${pt.qty}" style="width:80px"></label>
+      </div>
+      <div class="pquick"><button type="button" data-q="bid">買一價</button><button type="button" data-q="ask">賣一價</button><button type="button" data-q="last">成交價</button><button type="button" data-q="mkt" class="${pt.kind === "MKT" ? "on" : ""}">市價</button></div>
+      <div class="prow">
+        <label>條件<select id="ptif"${pt.kind === "MKT" ? " disabled" : ""}><option value="ROD">ROD 當日有效</option><option value="IOC">IOC 立即成交否則取消</option><option value="FOK">FOK 全部成交否則取消</option></select></label>
+        <label class="chk"><input type="checkbox" id="ptrig"${pt.trig ? " checked" : ""}> 觸價單</label>
+      </div>
+      <div class="prow" id="ptrigrow"${pt.trig ? "" : " hidden"}>
+        <label>當成交價<select id="ptdir"><option value="le">跌到（含）以下</option><option value="ge">漲到（含）以上</option></select></label>
+        <label>觸發價<input id="ptpx" type="number" step="0.01" value="${esc(pt.trigPx)}" style="width:110px"></label>
+      </div>
+      <p class="note" id="pest"></p>
+      <button class="btn primary" id="psubmit">送出委託</button>
+      <p class="pmsg" id="pmsg"></p>
+    </div>`;
+  $("#ptif").value = pt.tif; $("#ptdir").value = pt.trigDir;
+  const sideDraw = () => { $$("#pside button").forEach((b) => b.classList.toggle("on", b.dataset.v === pt.side)); $("#psubmit").textContent = (pt.side === "B" ? "送出買進" : "送出賣出") + "委託"; $("#psubmit").className = "btn primary " + (pt.side === "B" ? "bbuy" : "bsell"); updEstimate(); };
+  sideDraw();
+  $("#pside").onclick = (e) => { const b = e.target.closest("[data-v]"); if (b) { pt.side = b.dataset.v; sideDraw(); } };
+  const setCode = async () => { const c = $("#pcode").value.trim().toUpperCase(); if (c === pt.code) return; pt.code = c; pt.price = ""; $("#pprice").value = ""; paperQ = null; renderBook(); if (c) { try { paperQ = (await papi("quote/" + c)).q; } catch { } renderBook(); if (paperQ && !pt.price) { const p0 = paperQ.last || (paperQ.bids[0] || [])[0]; if (p0) { pt.price = p0; $("#pprice").value = p0; } } updEstimate(); } };
+  $("#pcode").addEventListener("change", setCode);
+  $("#pcode").addEventListener("input", () => { const c = $("#pcode").value.trim(); if (/^[0-9A-Z]{4,6}$/i.test(c) && S.byCode[c.toUpperCase()]) setCode(); });
+  $("#pdt").onchange = () => { pt.dt = $("#pdt").checked; if (pt.dt) { pt.tag = "dt"; $("#ptag").value = "dt"; } updEstimate(); };
+  $("#ptag").onchange = () => { pt.tag = $("#ptag").value; };
+  $("#pprice").oninput = () => { pt.price = $("#pprice").value; updEstimate(); };
+  $("#pqty").oninput = () => { pt.qty = Math.max(1, Math.round(+$("#pqty").value || 1)); updEstimate(); };
+  $("#ptif").onchange = () => { pt.tif = $("#ptif").value; };
+  $("#ptrig").onchange = () => { pt.trig = $("#ptrig").checked; $("#ptrigrow").hidden = !pt.trig; };
+  $("#ptdir").onchange = () => { pt.trigDir = $("#ptdir").value; };
+  $("#ptpx").oninput = () => { pt.trigPx = $("#ptpx").value; };
+  const stepP = (d) => { let p = +$("#pprice").value || (paperQ && paperQ.last) || 0; if (!p) return; p = pround(p + d * ptick(d > 0 ? p : p - 1e-9)); pt.price = p; $("#pprice").value = p; updEstimate(); };
+  $("#pminus").onclick = () => stepP(-1); $("#pplus").onclick = () => stepP(1);
+  $$(".pquick button").forEach((b) => b.onclick = () => {
+    const q = paperQ; const k = b.dataset.q;
+    if (k === "mkt") { pt.kind = pt.kind === "MKT" ? "LMT" : "MKT"; renderTicket(); return; }
+    pt.kind = "LMT";
+    const v = !q ? null : k === "bid" ? (q.bids[0] || [])[0] : k === "ask" ? (q.asks[0] || [])[0] : q.last;
+    if (v) { pt.price = v; } renderTicket();
+  });
+  $("#psubmit").onclick = async () => {
+    const body = { code: pt.code, side: pt.side, qty: pt.qty, price: +pt.price, kind: pt.kind, tif: pt.kind === "MKT" ? "IOC" : pt.tif, dt: pt.dt, tag: pt.tag, name: (S.byCode[pt.code] || {}).n };
+    if (pt.trig) body.trigger = { px: +pt.trigPx, dir: pt.trigDir };
+    $("#psubmit").disabled = true;
+    try {
+      const r = await papi("order", body);
+      const o = r.order;
+      alertBox(`委託 #${o.id} 已送出：${orderStatus(o)}`, true);
+      paperRefresh();
+    } catch (e) { alertBox(e.message); }
+    $("#psubmit").disabled = false;
+  };
+  updEstimate();
+}
+function updEstimate() {
+  const el = $("#pest"); if (!el) return;
+  const p = pt.kind === "MKT" ? (paperQ ? (pt.side === "B" ? (paperQ.asks[0] || [])[0] : (paperQ.bids[0] || [])[0]) : null) : +pt.price;
+  if (!pt.code || !p) { el.textContent = ""; return; }
+  const disc = (paperV && paperV.disc) || 0.6, amt = p * pt.qty * 1000, fee = Math.max(20, Math.floor(amt * 0.001425 * disc));
+  const ps = ((paperV && paperV.pos) || []).find((x) => x.code === pt.code);
+  const today = paperV && paperV.feed ? paperV.feed.now.slice(0, 10).replace(/-/g, "") : "";
+  const dtTax = pt.dt || (ps && ps.open === today);
+  const tax = pt.side === "S" ? Math.floor(amt * (dtTax ? 0.0015 : pt.code.startsWith("00") ? 0.001 : 0.003)) : 0;
+  const nm = (S.byCode[pt.code] || {}).n || (paperQ && paperQ.n) || "";
+  el.innerHTML = `${esc(nm)} ${pt.qty} 張 × ${fmtPx(p)} ＝ ${money(amt)} 元；手續費約 ${money(fee)}${tax ? `、證交稅約 ${money(tax)}` : ""}，${pt.side === "B" ? `約需 ${money(amt + fee)} 元` : `約可拿回 ${money(amt - fee - tax)} 元`}${pt.kind === "MKT" ? "（市價：用漲跌停價當上限，立即成交否則取消）" : ""}`;
+}
+function renderBook() {
+  const el = $("#pbook"); if (!el) return;
+  const q = paperQ;
+  if (!pt.code) { el.innerHTML = '<p class="note">輸入股票代號，就會顯示即時五檔。</p>'; return; }
+  if (!q) { el.innerHTML = `<p class="note">正在讀取 ${esc(pt.code)} 的即時五檔…（非交易時間會顯示最後一筆）</p>`; return; }
+  const mine = ((paperV && paperV.orders) || []).filter((o) => o.code === pt.code);
+  const mark = (p, side) => { const m = mine.filter((o) => Math.abs(o.price - p) < 1e-6 && o.side === side); return m.length ? `<span class="pmine">我 ${m.reduce((a, o) => a + o.qty - o.filled, 0)} 張${m[0].ahead != null ? `・前面約 ${Math.ceil(m[0].ahead)}` : ""}</span>` : ""; };
+  const asks = [...q.asks].reverse(), bids = q.bids;
+  const mx = Math.max(1, ...q.asks.map((x) => x[1]), ...q.bids.map((x) => x[1]));
+  const chg = q.last && q.ref ? q.last / q.ref - 1 : null;
+  const live = q.d === (paperV && paperV.feed ? paperV.feed.now.slice(0, 10).replace(/-/g, "") : "");
+  el.innerHTML = `<div class="card-h"><h2>${esc(q.n || pt.code)} <span class="muted num">${esc(pt.code)}</span></h2><span class="note">${live ? "" : "非今天的資料・"}${esc(q.t || "")}</span></div>
+    <div class="pquote"><b class="num">${fmtPx(q.last)}</b> ${chg != null ? chgHtml(chg) : ""}<span class="note">開 ${fmtPx(q.o)}・高 ${fmtPx(q.h)}・低 ${fmtPx(q.l)}・量 ${money(q.vol)} 張・漲停 ${fmtPx(q.up)}・跌停 ${fmtPx(q.dn)}</span></div>
+    <table class="pbook"><tbody>
+      ${asks.map(([p, s]) => `<tr class="ask" data-p="${p}"><td>賣</td><td class="num">${fmtPx(p)}</td><td><div class="pbar ask" style="width:${s / mx * 100}%"></div><span class="num">${s}</span></td><td>${mark(p, "S")}</td></tr>`).join("")}
+      ${bids.map(([p, s]) => `<tr class="bid" data-p="${p}"><td>買</td><td class="num">${fmtPx(p)}</td><td><div class="pbar bid" style="width:${s / mx * 100}%"></div><span class="num">${s}</span></td><td>${mark(p, "B")}</td></tr>`).join("")}
+    </tbody></table><p class="note" style="margin:6px 0 0">點價格可以帶入下單價。數量單位：張。</p>`;
+  $$(".pbook tr").forEach((tr) => tr.onclick = () => { pt.kind = "LMT"; pt.price = +tr.dataset.p; renderTicket(); });
+}
+function orderStatus(o) {
+  const tr = o.trigger;
+  switch (o.status) {
+    case "waiting": return `等觸價（成交價${tr.dir === "le" ? "跌到" : "漲到"} ${fmtPx(tr.px)}）`;
+    case "pending": return "等撮合（開盤前或收盤集合競價的單，會在開盤／收盤時撮合）";
+    case "queue": return o.ahead == null ? "排隊中：價位在五檔以外，等價格到" : `排隊中：前面約 ${Math.ceil(o.ahead)} 張`;
+    case "partial": return `部分成交 ${o.filled} 張${o.ahead != null ? `，剩下的前面約 ${Math.ceil(o.ahead)} 張` : ""}`;
+    case "filled": return `全部成交，均價 ${fmtPx(o.avg)}`;
+    case "cancelled": return "已取消";
+    case "partial_cancelled": return `成交 ${o.filled} 張，其餘取消`;
+    case "expired": return "收盤未成交，已失效";
+    case "partial_expired": return `成交 ${o.filled} 張，其餘收盤失效`;
+  }
+  return o.status;
+}
+function renderOrders(v) {
+  const row = (o, act) => `<tr><td>#${o.id}<br><span class="muted small">${esc(o.at.slice(5, 16))}</span></td><td><b>${esc(o.name)}</b><br><span class="muted small">${o.code}</span></td>
+    <td><span class="${o.side === "B" ? "up" : "down"}">${o.side === "B" ? "買" : "賣"}${o.dt ? "（當沖）" : ""}</span><br><span class="muted small">${PTAG[o.tag] || ""}</span></td>
+    <td>${o.kind === "MKT" ? "市價" : fmtPx(o.price)}<br><span class="muted small">${o.tif}</span></td><td>${o.filled}／${o.qty} 張${o.avg ? `<br><span class="muted small">均價 ${fmtPx(o.avg)}</span>` : ""}</td>
+    <td class="txt">${esc(orderStatus(o))}${o.note && !["filled"].includes(o.status) ? `<br><span class="muted small">${esc(o.note)}</span>` : ""}</td>
+    <td>${act ? `<button class="btn sm" data-cancel="${o.id}">取消</button>` : ""}</td></tr>`;
+  const head = `<thead><tr><th>委託</th><th>股票</th><th>買賣</th><th>價格</th><th>成交／委託</th><th style="text-align:left">狀態</th><th></th></tr></thead>`;
+  $("#porders").innerHTML = `<div class="card-h" style="padding:16px 22px 4px"><h2>委託中（${v.orders.length}）</h2></div>
+    ${v.orders.length ? `<div class="tbl-wrap"><table class="tbl">${head}<tbody>${v.orders.map((o) => row(o, true)).join("")}</tbody></table></div>` : '<p class="note" style="padding:0 22px 16px">目前沒有委託中的單。</p>'}
+    ${v.done.length ? `<details class="more-info" style="margin:0 6px 6px"><summary>最近已完成的委託（${v.done.length}）</summary><div class="tbl-wrap"><table class="tbl">${head}<tbody>${v.done.slice(0, 40).map((o) => row(o, false)).join("")}</tbody></table></div></details>` : ""}`;
+  $$("[data-cancel]").forEach((b) => b.onclick = async () => { try { await papi("cancel", { id: +b.dataset.cancel }); alertBox("已取消委託 #" + b.dataset.cancel, true); } catch (e) { alertBox(e.message); } paperRefresh(); });
+}
+function renderPos(v) {
+  $("#ppos").innerHTML = `<div class="card-h" style="padding:16px 22px 4px"><h2>庫存（${v.pos.length}）</h2>${help("paperpos")}</div>
+    ${v.pos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>張數</th><th>均價</th><th>現價</th><th>市值</th><th>未實現損益</th><th>策略</th><th>停損／停利</th><th></th></tr></thead><tbody>
+    ${v.pos.map((p) => `<tr><td><b>${esc(p.name)}</b><br><span class="muted small">${p.code}・${p.open ? p.open.slice(4, 6) + "/" + p.open.slice(6) + " 買進" : ""}${p.dt ? "・當沖" : ""}</span></td>
+      <td>${p.lots}</td><td>${fmtPx(p.avg)}</td><td>${fmtPx(p.px)}</td><td>${money(p.val)}</td>
+      <td>${smoney(p.unreal)}<br><span class="muted small">${p.ret != null ? (p.ret >= 0 ? "+" : "") + (p.ret * 100).toFixed(2) + "%" : ""}</span></td>
+      <td>${PTAG[p.tag] || ""}</td>
+      <td class="txt">${p.lots > 0 ? `<span class="pexit"><input type="number" step="0.01" placeholder="停損" value="${p.stop || ""}" data-stop="${p.code}"><input type="number" step="0.01" placeholder="停利" value="${p.target || ""}" data-target="${p.code}"><button class="btn sm" data-exit="${p.code}">設定</button></span>` : "—"}</td>
+      <td><button class="btn sm" data-close="${p.code}" data-lots="${Math.abs(p.lots)}" data-short="${p.lots < 0 ? 1 : 0}">${p.lots < 0 ? "買回" : "賣出"}</button></td></tr>`).join("")}
+    </tbody></table></div>` : '<p class="note" style="padding:0 22px 16px">目前沒有庫存。</p>'}`;
+  $$("[data-close]").forEach((b) => b.onclick = () => { pt.code = b.dataset.close; pt.side = b.dataset.short === "1" ? "B" : "S"; pt.qty = +b.dataset.lots; pt.dt = b.dataset.short === "1"; pt.kind = "LMT"; const q = paperV.quotes[pt.code]; pt.price = q ? (pt.side === "S" ? (q.bids[0] || [])[0] : (q.asks[0] || [])[0]) || q.last : ""; renderTicket(); paperRefresh(); $("#pticket").scrollIntoView({ behavior: "smooth" }); });
+  $$("[data-exit]").forEach((b) => b.onclick = async () => { const c = b.dataset.exit; try { await papi("exit", { code: c, stop: $(`[data-stop="${c}"]`).value || null, target: $(`[data-target="${c}"]`).value || null }); alertBox("已設定 " + c + " 的停損／停利：成交價碰到就以買一價賣出", true); } catch (e) { alertBox(e.message); } paperRefresh(); });
+}
+function renderClosed(v) {
+  $("#pclosed").innerHTML = `<div class="card-h" style="padding:16px 22px 4px"><h2>已實現損益（賣出結算）</h2></div>
+    ${v.closed.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>時間</th><th>股票</th><th>類型</th><th>張數</th><th>買進均價</th><th>賣出價</th><th>手續費＋稅</th><th>損益</th><th>報酬</th><th>持有</th><th>策略</th></tr></thead><tbody>
+    ${v.closed.slice(0, 60).map((c) => `<tr><td>${esc(c.at.slice(5, 16))}</td><td><b>${esc(c.name)}</b><br><span class="muted small">${c.code}</span></td><td>${esc(c.kind)}</td><td>${c.lots}</td>
+      <td>${c.kind === "當沖回補" ? `賣 ${fmtPx(c.cost)}` : fmtPx(c.cost)}</td><td>${c.kind === "當沖回補" ? `買回 ${fmtPx(c.px)}` : fmtPx(c.px)}</td><td>${money(c.fee + c.tax)}<br><span class="muted small">稅 ${money(c.tax)}</span></td>
+      <td>${smoney(c.pnl)}</td><td>${c.ret != null ? `<span class="${cls(c.ret)}">${(c.ret * 100).toFixed(2)}%</span>` : ""}</td><td>${c.days} 天</td><td>${PTAG[c.tag] || ""}</td></tr>`).join("")}
+    </tbody></table></div>` : '<p class="note" style="padding:0 22px 16px">還沒有賣出結算的交易。</p>'}`;
+}

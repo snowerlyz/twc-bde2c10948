@@ -57,6 +57,20 @@ def lan_ips():
 
 SAFE = re.compile(r"^[A-Za-z0-9]{1,12}$")
 
+# 模擬交易（模擬盤）：帳戶與即時行情
+PAPER = None
+FEED = None
+
+
+def paper_init():
+    global PAPER, FEED
+    if PAPER is None:
+        import paper as _paper
+        PAPER = _paper.Paper()
+        FEED = _paper.Feed(PAPER)
+        FEED.start()
+    return PAPER, FEED
+
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "TWCompass/1.0"
@@ -111,6 +125,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/update":
             started = start_update()
             return self._json({"started": started, "running": updating()})
+        if path.startswith("/api/paper/"):
+            return self.paper_post(path[len("/api/paper/"):], body)
         if path == "/api/watchlist":
             try:
                 lst = json.loads(body.decode("utf-8"))
@@ -121,7 +137,42 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 400)
         self._json({"error": "notfound"}, 404)
 
+    def paper_post(self, act, body):
+        pp, fd = paper_init()
+        try:
+            req = json.loads(body.decode("utf-8") or "{}")
+            if act == "order":
+                code = str(req.get("code") or "")
+                if SAFE.match(code):
+                    fd.quote(code)                 # 先拿到最新五檔再撮合
+                o = pp.place(req)
+                return self._json({"ok": True, "order": o})
+            if act == "cancel":
+                return self._json({"ok": True, "order": pp.cancel(int(req.get("id")))})
+            if act == "reset":
+                pp.reset(int(req.get("cash") or 1000000), float(req.get("disc") or 0.6))
+                return self._json({"ok": True})
+            if act == "exit":
+                pp.set_exit(str(req.get("code")), req.get("stop"), req.get("target"))
+                return self._json({"ok": True})
+        except ValueError as e:
+            return self._json({"error": str(e)}, 400)
+        except Exception as e:
+            log("模擬交易錯誤：%s" % e)
+            return self._json({"error": "處理失敗：%s" % e}, 500)
+        return self._json({"error": "notfound"}, 404)
+
     def api_get(self, p):
+        if p == "paper":
+            pp, fd = paper_init()
+            v = pp.view()
+            v["feed"] = {"err": fd.err, "last_ok": fd.last_ok, "now": now_tw().strftime("%Y-%m-%d %H:%M:%S")}
+            return self._json(v)
+        m = re.match(r"^paper/quote/([A-Za-z0-9]+)$", p)
+        if m and SAFE.match(m.group(1)):
+            pp, fd = paper_init()
+            q = fd.quote(m.group(1))
+            return self._json({"q": q, "err": fd.err, "now": now_tw().strftime("%Y-%m-%d %H:%M:%S")})
         if p == "latest":
             return self._file_json(os.path.join(RESULTS, "latest.json"))
         if p == "status":
@@ -202,6 +253,10 @@ def serve(port, update_fn):
         raise SystemExit("找不到可用的連接埠")
     write_json(os.path.join(DATA, "server.json"), {"port": port, "pid": os.getpid()})
     threading.Thread(target=scheduler, daemon=True).start()
+    try:
+        paper_init()            # 模擬交易：有委託或庫存時，開盤期間每 5 秒抓即時行情撮合
+    except Exception as e:
+        log("模擬交易啟動失敗：%s" % e)
     if os.environ.get("TWC_OPEN") == "1":
         def _open():
             time.sleep(1.5)

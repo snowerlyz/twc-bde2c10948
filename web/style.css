@@ -694,3 +694,48 @@ table.tbl.cards.dttbl td:nth-child(6), table.tbl.cards.dttbl td:nth-child(7) { g
 .ssum .note { display: block; margin-top: 2px; }
 .gloss li { line-height: 1.6; }
 .fold { margin-top: 10px; } .fold summary { cursor: pointer; color: var(--brass); }
+/* ---- 模擬交易 ---- */
+.pkv { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.pkv .note span { display: inline; font-size: inherit; color: inherit; }
+.pkv .note > span.up, .pkv .note > span.down { display: inline; }
+.pform { display: grid; gap: 12px; }
+.pform label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.pform label.chk { flex-direction: row; align-items: center; }
+.pform input, .pform select, #pacct input { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 11px; color: var(--ink); min-width: 0; font-size: 16px; }
+.pform input:disabled, .pform select:disabled { opacity: .5; }
+.prow { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.pstep { display: flex; align-items: stretch; gap: 0; }
+.pstep input { width: 130px; border-radius: 0; text-align: center; }
+.pstep button { width: 40px; background: var(--surface-3); border: 1px solid var(--line-2); color: var(--ink); cursor: pointer; font-size: 18px; }
+.pstep button:first-child { border-radius: 10px 0 0 10px; } .pstep button:last-child { border-radius: 0 10px 10px 0; }
+.pquick { display: flex; flex-wrap: wrap; gap: 8px; }
+.pquick button { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 99px; padding: 6px 14px; cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.pquick button.on { background: var(--brass-soft); color: var(--brass); border-color: var(--brass); }
+#pside button.buy.on { background: linear-gradient(135deg, #ff7b83, var(--up)); color: #fff; box-shadow: none; }
+#pside button.sell.on { background: linear-gradient(135deg, #5ce6a8, var(--down)); color: #04130c; box-shadow: none; }
+.btn.primary.bbuy { background: linear-gradient(135deg, #ff7b83, var(--up)); color: #fff; box-shadow: none; }
+.btn.primary.bsell { background: linear-gradient(135deg, #5ce6a8, var(--down)); color: #04130c; box-shadow: none; }
+.btn.sm { padding: 4px 12px; font-size: 13px; min-height: 0; }
+.pmsg { margin: 0; font-size: 14px; min-height: 1em; }
+.pmsg.ok { color: var(--brass); } .pmsg.bad { color: var(--up); }
+.pquote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 8px; }
+.pquote > b { font-size: 26px; }
+.pquote .note { flex-basis: 100%; }
+table.pbook { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.pbook td { padding: 5px 8px; border-top: 1px solid var(--line); cursor: pointer; position: relative; }
+table.pbook td:nth-child(1) { width: 32px; color: var(--muted); font-size: 12px; }
+table.pbook tr.ask td:nth-child(2) { color: var(--down); } table.pbook tr.bid td:nth-child(2) { color: var(--up); }
+table.pbook tr.bid:first-of-type td, table.pbook tr.ask + tr.bid td { border-top: 2px solid var(--line-2); }
+table.pbook td:nth-child(3) { width: 40%; }
+.pbar { position: absolute; left: 0; top: 4px; bottom: 4px; border-radius: 4px; opacity: .22; }
+.pbar.ask { background: var(--down); } .pbar.bid { background: var(--up); }
+table.pbook td:nth-child(3) span { position: relative; padding-left: 6px; }
+table.pbook tr:hover td { background: var(--brass-soft); }
+.pmine { font-size: 12px; color: var(--brass); white-space: nowrap; }
+.pspark { width: 260px; height: 46px; vertical-align: middle; margin-right: 8px; }
+.pexit { display: inline-flex; gap: 4px; align-items: center; }
+.pexit input { width: 76px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 4px 6px; color: var(--ink); }
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); font-size: 14px; }
+@media (max-width: 640px) { .pstep input { width: 100px; } .pspark { width: 100%; } }
+.prow[hidden] { display: none; }
+.pexit { flex-wrap: wrap; } td.txt .pexit input { width: 90px; }
