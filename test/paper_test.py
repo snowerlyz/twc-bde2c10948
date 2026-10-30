@@ -137,8 +137,31 @@ def test_trigger_stop():
     print("觸價停損 OK：", p.s["closed"][-1]["pnl"])
 
 
+def test_moc_and_plan_exit():
+    p, c = mk()
+    c.t = T0.replace(hour=10)
+    p.on_quote(snap("10:00:00", 100.0, 1000, [(100.0, 50)], [(100.5, 30)]))
+    o = p.place({"code": "1234", "side": "B", "qty": 2, "kind": "MOC", "plan": {"h": 5, "hz": "short"}})
+    assert o["status"] == "pending"
+    p.on_quote(snap("10:00:05", 101.0, 1100, [(101.0, 50)], [(101.5, 30)]))
+    assert o["status"] == "pending"
+    c.t = T0.replace(hour=13, minute=31)
+    p.on_quote(snap("13:30:00", 99.0, 2000, [(99.0, 5)], [(99.5, 5)]))
+    p.after_poll()
+    assert o["status"] == "filled" and o["avg"] == 99.0, o
+    pe = p.s["pos"]["1234"]["plan_exit"]
+    assert pe["day"] == "20261106", pe
+    # 到期那天開盤 → 以開盤價賣出
+    c.t = dt.datetime(2026, 11, 6, 9, 0, 3)
+    p.on_quote(snap("09:00:03", 103.0, 300, [(102.5, 5)], [(103.0, 5)], o=103.0, d="20261106"))
+    assert "1234" not in p.s["pos"], p.s["pos"]
+    cl = p.s["closed"][-1]
+    assert cl["px"] == 103.0 and cl["days"] == 7, cl
+    print("收盤價買進、計畫到期開盤賣出 OK：", cl["pnl"])
+
+
 if __name__ == "__main__":
     for f in (test_queue_fill, test_take_and_settle, test_through_and_hidden, test_daytrade_short_and_eod,
-              test_preopen_auction_and_expiry, test_trigger_stop):
+              test_preopen_auction_and_expiry, test_trigger_stop, test_moc_and_plan_exit):
         f()
     print("全部通過")

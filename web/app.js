@@ -92,6 +92,7 @@ const GLOSS = {
   dtscore: "當沖分數：依今天收盤後的資料，估計下一個交易日「開盤買、收盤賣」能賺錢的機會。",
   mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
   paperpos: "未實現損益＝現在用現價賣掉、扣掉手續費和證交稅之後，比買進成本（含買進手續費）多或少多少。停損／停利：成交價碰到你設定的價格，就自動以當下的買一價送出賣單（之後一樣要排隊才成交）。",
+  timing: "買賣時機的依據：把最近 250 個已揭曉交易日、排名前 5%（賣出看後 5%）的股票拿來比較四種做法——隔天開盤買或收盤前買 × 到期那天開盤賣或收盤賣——扣掉手續費和稅之後誰的平均報酬比較好。台股常見「開高走低」，所以多半是收盤前買、開盤賣比較好；每天都會用最新結果重算。另外也測過「回檔掛低價買」「固定停損停利」「移動停損」「評價變差就賣」，兩年回測平均都比單純持有到期差（停損停利會砍掉後來大漲的股票），所以沒有當成預設。",
   dtshape: "隔天走勢型態：依隔天的日 K（開盤→最高／最低→收盤）分成一路走高、一路走低、先漲後跌（衝高拉回）、先跌後漲（探底回升）、區間震盪五種。模型用今天收盤後已知的條件估每一種型態的機率，再用最近 100 個交易日、模型當時的預測對答案：只有某型態「預測到時真的出現」的比例，比一般情況高 10 個百分點以上、而且是 1.4 倍以上，才會對這個型態下預測；其他一律寫「沒把握，不預測」。只有日 K 資料、沒有分鐘資料，所以「先漲後跌」只代表全天高點明顯高於收盤，不保證高點一定在早盤。",
   dtrange: "高點／低點範圍：以隔天開盤價為基準，最高價大概會比開盤高多少、最低價大概會比開盤低多少。中間的數字是一半機會會超過的位置，括號是 8 成機會會落在的範圍；主要依據是這檔近 10 天的平均振幅，和過去 120 天條件相近股票的實際結果。下面附「約 X 元」是假設隔天平盤開出、用今天收盤價換算的，開盤若跳空要跟著調整。做多可把高點中間值當停利參考、低點範圍當停損參考（做空反過來）。",
   dtwin: "勝算＝扣掉手續費和稅之後，真的賺錢的機會。依這檔股票自己的各項當沖條件，用過去 60 個交易日、所有股票隔天的實際結果逐檔估算（每檔各自計算）。超過 50% 而且平均是賺的，才算有優勢。",
@@ -1541,7 +1542,9 @@ async function vPicks(tok) {
     let st;
     const parts = ["buy", "sell"].map((sd) => { const z = (x.gate || {})[sd] || {}; return z.mode === "建議" ? (sd === "buy" ? "建議買" : "建議賣") : z.mode === "相對" ? (sd === "buy" ? "相對看好" : "相對看淡") : null; }).filter(Boolean);
     st = parts.length ? `<span class="pill ${x.sides && x.sides.length ? "p-good" : "p-bad"} sm">${parts.join("、")}</span>` : `<span class="pill p-bad sm">資料不足</span>`;
-    return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${gateLine(x, R)}${probLine(x)}${x.bt && (x.bt.buy_n || x.bt.sell_n) ? `<p class="note" style="margin:0">兩年來照當時規則操作的實際成績（${x.bt.days} 天）：${btLine(x.bt, h)}。</p>` : ""}</div>`;
+    const tm = x.timing;
+    const tmTxt = tm ? `<p class="note" style="margin:4px 0 0">時機：${TM_NAME[tm.best.split("_")[0]]}買、到期${TM_NAME[tm.best.split("_")[1]]}賣（過去 ${tm.n} 次平均 ${(tm.avg[tm.best] * 100).toFixed(2)}%，開盤買收盤賣 ${(tm.avg.open_close * 100).toFixed(2)}%）${help("timing")}</p>` : "";
+    return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${gateLine(x, R)}${probLine(x)}${tmTxt}${x.bt && (x.bt.buy_n || x.bt.sell_n) ? `<p class="note" style="margin:0">兩年來照當時規則操作的實際成績（${x.bt.days} 天）：${btLine(x.bt, h)}。</p>` : ""}</div>`;
   }).join("");
   const nB = rated.filter((r) => raHas(r, "B")).length, nS = rated.filter((r) => raHas(r, "S")).length;
   view.innerHTML = `<h1 class="grad">評價清單</h1>
@@ -1619,6 +1622,23 @@ function mktCard(L, MD) {
   return `<section class="card section mkcard"><div class="card-h"><h2>${svgI("fut")} 大盤預測（加權指數 ${fmtPx(M.taiex)}）</h2>${help("mktfc")}<a class="more" href="#/check">看準不準</a></div>
     <div class="grid g3 rsum">${cells}</div></section>`;
 }
+const TM_NAME = { open: "開盤", close: "收盤前" };
+function nextTradeDay(day, n) {
+  const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8));
+  while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; }
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+function timingLine(tm, i, side, day) {
+  if (!tm) return "";
+  const pc = (x) => `${x > 0 ? "+" : ""}${(x * 100).toFixed(2)}%`;
+  if (side === "S") {
+    if (tm.sell_open_gain == null) return "";
+    const op = tm.sell_open_gain > 0;
+    return `<p class="note tmline"><b>時機：</b>持有要減碼的話，${nextTradeDay(day, 1)} <b>${op ? "開盤" : "收盤前"}</b>賣。依據：過去 ${tm.days} 天這類賣出訊號 ${tm.sell_n} 次，開盤賣比收盤賣平均${op ? "多拿" : "少拿"} ${Math.abs(tm.sell_open_gain * 100).toFixed(2)}%（${Math.round((op ? tm.sell_open_better : 1 - tm.sell_open_better) * 100)}% 的情況這樣比較好）。${help("timing")}</p>`;
+  }
+  const [en, ex] = tm.best.split("_"), a = tm.avg;
+  return `<p class="note tmline"><b>時機：</b>${nextTradeDay(day, 1)} <b>${TM_NAME[en]}</b>買進（${en === "close" ? "13:25～13:30 收盤集合競價" : "9:00 開盤集合競價"}），持有 ${[5, 20, 60][i]} 個交易日，約 ${nextTradeDay(day, 1 + [5, 20, 60][i])} <b>${TM_NAME[ex]}</b>賣出。依據：過去 ${tm.days} 天同類訊號 ${tm.n} 次，這樣做平均 ${pc(a[tm.best])}（扣成本），開盤買、收盤賣是 ${pc(a.open_close)}${tm.better_close >= 0.55 ? `；${Math.round(tm.better_close * 100)}% 的情況收盤前買比開盤買划算` : "（每一筆的差別不大，好處是長期平均累積出來的）"}。${help("timing")}</p>`;
+}
 function ratingCard(d, r, RC) {
   const hs = (d.rec && d.rec.hs) || {};
   const px = r.px ?? ((d.hist[d.hist.length - 1] || [])[4]);
@@ -1635,6 +1655,8 @@ function ratingCard(d, r, RC) {
         <div><span>停損參考</span><b>${fmtPx(stop)}</b></div><div><span>目標參考</span><b>${fmtPx(tgt)}</b></div></div>`;
       const why = ((d.h[h] && (up_ ? d.h[h].pos : d.h[h].neg)) || []).slice(0, 2);
       if (why.length) body += `<p class="note" style="margin:6px 0 0">理由：${esc(why.join("；"))}</p>`;
+      body += timingLine(st.timing, i, up_ ? "B" : "S", (RC && RC.day) || S.latest.day);
+      if (up_ && !(S.status && S.status.static)) body += `<a class="btn sm" style="margin-top:6px" href="#/paper/${r.c}/plan-${h}">依時機模擬買進</a>`;
       const z = (st.gate || {})[up_ ? "buy" : "sell"] || {};
       const acc = a === "b" || a === "s" ? z.trail : z.rate;
       if (acc != null) body += `<p class="note" style="margin:4px 0 0">${a === "b" || a === "s" ? "未達建議門檻，" : ""}這類評價最近準確度 ${Math.round(acc * 100)}%（${up_ ? "跑贏" : "跑輸"}加權指數的比例）</p>`;
@@ -1905,7 +1927,18 @@ async function vPaper(tok, arg) {
       <a class="btn" href="#/help">看使用說明</a></section>`;
     return;
   }
-  if (arg) { pt.code = arg; pt.price = ""; }
+  pt.plan = null;
+  if (arg) {
+    const [code, pl] = arg.split("/");
+    pt.code = code; pt.price = "";
+    if (pl && pl.startsWith("plan-")) {
+      const hz = pl.slice(5), i = HZ.indexOf(hz);
+      let tm = null;
+      try { tm = ((await api("recs")).h[hz] || {}).timing; } catch { }
+      const [en, ex] = (tm && tm.best || "close_open").split("_");
+      Object.assign(pt, { side: "B", dt: false, tag: hz, kind: en === "close" ? "MOC" : "MOO", tif: "ROD", plan: { h: [5, 20, 60][i], hz, exit: ex } });
+    }
+  }
   view.innerHTML = `<h1 class="grad">模擬交易</h1>
   <p class="lead">用證交所的<b>即時五檔與成交量</b>模擬真實下單：送出後不是馬上成交，而是依你下單當下的排隊位置，等前面的單被成交掉、輪到你才成交。可以做現股（短線、波段、長線）和當沖，賣出時依手續費、證交稅結算真正的損益。不會動到真的錢。</p>
   <section class="card section" id="pacct"><p class="note">讀取帳戶中…</p></section>
@@ -1983,12 +2016,13 @@ function renderTicket() {
         <label>策略<select id="ptag">${Object.entries(PTAG).map(([k, t]) => `<option value="${k}"${pt.tag === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>
       </div>
       <div class="prow">
-        <label>價格<span class="pstep"><button type="button" id="pminus">−</button><input id="pprice" type="number" step="0.01" value="${esc(pt.price)}"${pt.kind === "MKT" ? " disabled" : ""}><button type="button" id="pplus">＋</button></span></label>
+        <label>價格<span class="pstep"><button type="button" id="pminus">−</button><input id="pprice" type="number" step="0.01" value="${esc(pt.price)}"${pt.kind !== "LMT" ? " disabled" : ""}><button type="button" id="pplus">＋</button></span></label>
         <label>張數<input id="pqty" type="number" min="1" max="499" value="${pt.qty}" style="width:80px"></label>
       </div>
-      <div class="pquick"><button type="button" data-q="bid">買一價</button><button type="button" data-q="ask">賣一價</button><button type="button" data-q="last">成交價</button><button type="button" data-q="mkt" class="${pt.kind === "MKT" ? "on" : ""}">市價</button></div>
+      <div class="pquick"><button type="button" data-q="bid">買一價</button><button type="button" data-q="ask">賣一價</button><button type="button" data-q="last">成交價</button><button type="button" data-q="mkt" class="${pt.kind === "MKT" ? "on" : ""}">市價</button><button type="button" data-q="moo" class="${pt.kind === "MOO" ? "on" : ""}">開盤價</button><button type="button" data-q="moc" class="${pt.kind === "MOC" ? "on" : ""}">收盤價</button></div>
+      ${pt.plan ? `<div class="pplan"><b>依時機計畫：</b>${pt.kind === "MOC" ? "收盤集合競價（13:30）以收盤價買進" : "開盤集合競價以開盤價買進"}，買到後第 ${pt.plan.h} 個交易日${pt.plan.exit === "open" ? "開盤" : "收盤"}自動賣出（${PTAG[pt.plan.hz] || ""}）。<button type="button" class="btn sm" id="pnoplan">不用計畫</button></div>` : ""}
       <div class="prow">
-        <label>條件<select id="ptif"${pt.kind === "MKT" ? " disabled" : ""}><option value="ROD">ROD 當日有效</option><option value="IOC">IOC 立即成交否則取消</option><option value="FOK">FOK 全部成交否則取消</option></select></label>
+        <label>條件<select id="ptif"${pt.kind !== "LMT" ? " disabled" : ""}><option value="ROD">ROD 當日有效</option><option value="IOC">IOC 立即成交否則取消</option><option value="FOK">FOK 全部成交否則取消</option></select></label>
         <label class="chk"><input type="checkbox" id="ptrig"${pt.trig ? " checked" : ""}> 觸價單</label>
       </div>
       <div class="prow" id="ptrigrow"${pt.trig ? "" : " hidden"}>
@@ -2018,13 +2052,14 @@ function renderTicket() {
   $("#pminus").onclick = () => stepP(-1); $("#pplus").onclick = () => stepP(1);
   $$(".pquick button").forEach((b) => b.onclick = () => {
     const q = paperQ; const k = b.dataset.q;
-    if (k === "mkt") { pt.kind = pt.kind === "MKT" ? "LMT" : "MKT"; renderTicket(); return; }
+    if (k === "mkt" || k === "moo" || k === "moc") { const K = k.toUpperCase(); pt.kind = pt.kind === K ? "LMT" : K; renderTicket(); return; }
     pt.kind = "LMT";
     const v = !q ? null : k === "bid" ? (q.bids[0] || [])[0] : k === "ask" ? (q.asks[0] || [])[0] : q.last;
     if (v) { pt.price = v; } renderTicket();
   });
   $("#psubmit").onclick = async () => {
-    const body = { code: pt.code, side: pt.side, qty: pt.qty, price: +pt.price, kind: pt.kind, tif: pt.kind === "MKT" ? "IOC" : pt.tif, dt: pt.dt, tag: pt.tag, name: (S.byCode[pt.code] || {}).n };
+    const body = { code: pt.code, side: pt.side, qty: pt.qty, price: +pt.price || (paperQ && paperQ.last) || (S.byCode[pt.code] || {}).px, kind: pt.kind, tif: pt.kind === "MKT" ? "IOC" : pt.tif, dt: pt.dt, tag: pt.tag, name: (S.byCode[pt.code] || {}).n };
+    if (pt.plan && pt.side === "B") body.plan = pt.plan;
     if (pt.trig) body.trigger = { px: +pt.trigPx, dir: pt.trigDir };
     $("#psubmit").disabled = true;
     try {
@@ -2035,11 +2070,12 @@ function renderTicket() {
     } catch (e) { alertBox(e.message); }
     $("#psubmit").disabled = false;
   };
+  const np = $("#pnoplan"); if (np) np.onclick = () => { pt.plan = null; pt.kind = "LMT"; renderTicket(); };
   updEstimate();
 }
 function updEstimate() {
   const el = $("#pest"); if (!el) return;
-  const p = pt.kind === "MKT" ? (paperQ ? (pt.side === "B" ? (paperQ.asks[0] || [])[0] : (paperQ.bids[0] || [])[0]) : null) : +pt.price;
+  const p = pt.kind === "MKT" ? (paperQ ? (pt.side === "B" ? (paperQ.asks[0] || [])[0] : (paperQ.bids[0] || [])[0]) : null) : pt.kind === "LMT" ? +pt.price : (paperQ && paperQ.last) || (S.byCode[pt.code] || {}).px;
   if (!pt.code || !p) { el.textContent = ""; return; }
   const disc = (paperV && paperV.disc) || 0.6, amt = p * pt.qty * 1000, fee = Math.max(20, Math.floor(amt * 0.001425 * disc));
   const ps = ((paperV && paperV.pos) || []).find((x) => x.code === pt.code);
@@ -2047,7 +2083,7 @@ function updEstimate() {
   const dtTax = pt.dt || (ps && ps.open === today);
   const tax = pt.side === "S" ? Math.floor(amt * (dtTax ? 0.0015 : pt.code.startsWith("00") ? 0.001 : 0.003)) : 0;
   const nm = (S.byCode[pt.code] || {}).n || (paperQ && paperQ.n) || "";
-  el.innerHTML = `${esc(nm)} ${pt.qty} 張 × ${fmtPx(p)} ＝ ${money(amt)} 元；手續費約 ${money(fee)}${tax ? `、證交稅約 ${money(tax)}` : ""}，${pt.side === "B" ? `約需 ${money(amt + fee)} 元` : `約可拿回 ${money(amt - fee - tax)} 元`}${pt.kind === "MKT" ? "（市價：用漲跌停價當上限，立即成交否則取消）" : ""}`;
+  el.innerHTML = `${esc(nm)} ${pt.qty} 張 × ${fmtPx(p)} ＝ ${money(amt)} 元；手續費約 ${money(fee)}${tax ? `、證交稅約 ${money(tax)}` : ""}，${pt.side === "B" ? `約需 ${money(amt + fee)} 元` : `約可拿回 ${money(amt - fee - tax)} 元`}${pt.kind === "MKT" ? "（市價：用漲跌停價當上限，立即成交否則取消）" : pt.kind === "MOC" ? "（收盤價：參加 13:25～13:30 收盤集合競價，以收盤價成交；金額以目前價格估計）" : pt.kind === "MOO" ? "（開盤價：參加下一次 9:00 開盤集合競價，以開盤價成交；金額以目前價格估計）" : ""}`;
 }
 function renderBook() {
   const el = $("#pbook"); if (!el) return;
@@ -2072,7 +2108,7 @@ function orderStatus(o) {
   const tr = o.trigger;
   switch (o.status) {
     case "waiting": return `等觸價（成交價${tr.dir === "le" ? "跌到" : "漲到"} ${fmtPx(tr.px)}）`;
-    case "pending": return "等撮合（開盤前或收盤集合競價的單，會在開盤／收盤時撮合）";
+    case "pending": return o.kind === "MOC" ? "等收盤集合競價（13:30 以收盤價成交）" : o.kind === "MOO" ? "等開盤集合競價（9:00 以開盤價成交）" : "等撮合（開盤前或收盤集合競價的單，會在開盤／收盤時撮合）";
     case "queue": return o.ahead == null ? "排隊中：價位在五檔以外，等價格到" : `排隊中：前面約 ${Math.ceil(o.ahead)} 張`;
     case "partial": return `部分成交 ${o.filled} 張${o.ahead != null ? `，剩下的前面約 ${Math.ceil(o.ahead)} 張` : ""}`;
     case "filled": return `全部成交，均價 ${fmtPx(o.avg)}`;
@@ -2086,7 +2122,7 @@ function orderStatus(o) {
 function renderOrders(v) {
   const row = (o, act) => `<tr><td>#${o.id}<br><span class="muted small">${esc(o.at.slice(5, 16))}</span></td><td><b>${esc(o.name)}</b><br><span class="muted small">${o.code}</span></td>
     <td><span class="${o.side === "B" ? "up" : "down"}">${o.side === "B" ? "買" : "賣"}${o.dt ? "（當沖）" : ""}</span><br><span class="muted small">${PTAG[o.tag] || ""}</span></td>
-    <td>${o.kind === "MKT" ? "市價" : fmtPx(o.price)}<br><span class="muted small">${o.tif}</span></td><td>${o.filled}／${o.qty} 張${o.avg ? `<br><span class="muted small">均價 ${fmtPx(o.avg)}</span>` : ""}</td>
+    <td>${o.kind === "MKT" ? "市價" : o.kind === "MOC" ? "收盤價" : o.kind === "MOO" ? "開盤價" : fmtPx(o.price)}<br><span class="muted small">${o.kind === "MOC" || o.kind === "MOO" ? "集合競價" : o.tif}${o.plan ? "・依計畫" : ""}</span></td><td>${o.filled}／${o.qty} 張${o.avg ? `<br><span class="muted small">均價 ${fmtPx(o.avg)}</span>` : ""}</td>
     <td class="txt">${esc(orderStatus(o))}${o.note && !["filled"].includes(o.status) ? `<br><span class="muted small">${esc(o.note)}</span>` : ""}</td>
     <td>${act ? `<button class="btn sm" data-cancel="${o.id}">取消</button>` : ""}</td></tr>`;
   const head = `<thead><tr><th>委託</th><th>股票</th><th>買賣</th><th>價格</th><th>成交／委託</th><th style="text-align:left">狀態</th><th></th></tr></thead>`;
@@ -2098,7 +2134,7 @@ function renderOrders(v) {
 function renderPos(v) {
   $("#ppos").innerHTML = `<div class="card-h" style="padding:16px 22px 4px"><h2>庫存（${v.pos.length}）</h2>${help("paperpos")}</div>
     ${v.pos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>張數</th><th>均價</th><th>現價</th><th>市值</th><th>未實現損益</th><th>策略</th><th>停損／停利</th><th></th></tr></thead><tbody>
-    ${v.pos.map((p) => `<tr><td><b>${esc(p.name)}</b><br><span class="muted small">${p.code}・${p.open ? p.open.slice(4, 6) + "/" + p.open.slice(6) + " 買進" : ""}${p.dt ? "・當沖" : ""}</span></td>
+    ${v.pos.map((p) => `<tr><td><b>${esc(p.name)}</b><br><span class="muted small">${p.code}・${p.open ? p.open.slice(4, 6) + "/" + p.open.slice(6) + " 買進" : ""}${p.dt ? "・當沖" : ""}${p.plan_exit ? `・計畫 ${+p.plan_exit.day.slice(4, 6)}/${+p.plan_exit.day.slice(6)} 開盤賣` : ""}</span></td>
       <td>${p.lots}</td><td>${fmtPx(p.avg)}</td><td>${fmtPx(p.px)}</td><td>${money(p.val)}</td>
       <td>${smoney(p.unreal)}<br><span class="muted small">${p.ret != null ? (p.ret >= 0 ? "+" : "") + (p.ret * 100).toFixed(2) + "%" : ""}</span></td>
       <td>${PTAG[p.tag] || ""}</td>

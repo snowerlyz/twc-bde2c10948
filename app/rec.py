@@ -218,6 +218,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             bt[sd + "_n"] = n_all
             bt[sd + "_ok"] = kind == "ok"
         tun[hn] = {"cut": {sd: label[sd]["c"] for sd in label}, "kind": {sd: label[sd]["kind"] for sd in label}}
+        timing = _timing(D, A_all, rank_of, sorted(ph), h, last, v20s)
         # ---- 今天每檔股票
         pbt = (PB or {}).get(hn, {}).get("today") or {}
         for i, p in (rank_of(last) if last in ph else {}).items():
@@ -238,7 +239,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             q = pbt.get(i)
             if q:      # 逐檔的機率與預期（取代整組共用的數字）
                 d[hn].update({"pb": q["pb"], "up": q["pu"], "ex": q["ex"], "lo": q["lo"], "hi": q["hi"]})
-        out["h"][hn] = {"sides": sides, "active": bool(sides), "gate": gate, "bt": bt,
+        out["h"][hn] = {"sides": sides, "active": bool(sides), "gate": gate, "bt": bt, "timing": timing,
                         "prob": (PB or {}).get(hn, {}).get("track"),
                         "watch": [sd for sd in ("buy", "sell") if label[sd]["kind"] == "watch"]}
     # ---- 每檔股票的綜合建議
@@ -293,6 +294,52 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
     tun["acc_log"] = {k: lg[k] for k in sorted(lg)[-120:]}
     out["acc_log"] = tun["acc_log"]
     return out, tun
+
+
+TM_COST = 0.001425 * 2 * 0.6 + 0.003
+TM_DAYS = 250
+TM_CUT = 0.95
+
+
+def _timing(D, A_all, rank_of, days, h, last, v20s):
+    """買賣時機：用最近 250 個已揭曉交易日的訊號（排名前 5%／後 5%），比較
+    「隔天開盤買 or 隔天收盤前買」×「到期那天開盤賣 or 收盤賣」，以及賣出訊號「隔天開盤賣 or 收盤賣」。
+    全部用當時已經揭曉的結果（walk-forward），每天重算。"""
+    codes = D.codes
+    known = [u for u in days if u + 1 + h <= last][-TM_DAYS:]
+    combos = {"open_close": [], "close_close": [], "open_open": [], "close_open": []}
+    sell_diff = []
+    for u in known:
+        rk = rank_of(u)
+        e0, e1 = u + 1, u + 1 + h
+        for i, p in rk.items():
+            if v20s[i][u] < MIN_VAL or (p < TM_CUT and p > 1 - TM_CUT):
+                continue
+            s = D.raw[codes[i]]
+            A = A_all[i]
+            o0, c0, o1, c1 = s["o"][e0], s["c"][e0], s["o"][e1], s["c"][e1]
+            if any(isnan(x) or x <= 0 for x in (o0, c0, o1, c1, A[e0], A[e1])):
+                continue
+            ent = {"open": o0 * A[e0] / c0, "close": A[e0]}
+            ext = {"open": o1 * A[e1] / c1, "close": A[e1]}
+            if p >= TM_CUT:
+                for k in combos:
+                    a, b = k.split("_")
+                    combos[k].append(ext[b] / ent[a] - 1 - TM_COST)
+            else:
+                sell_diff.append(o0 / c0 - 1)          # 隔天開盤賣比收盤賣多拿（正＝開盤賣比較好）
+    if not combos["open_close"]:
+        return None
+    avg = {k: sum(v) / len(v) for k, v in combos.items()}
+    win = {k: sum(1 for x in v if x > 0) / len(v) for k, v in combos.items()}
+    best = max(avg, key=avg.get)
+    # 收盤買比開盤買好的比例（逐筆）
+    better_close = sum(1 for a, b in zip(combos["close_close"], combos["open_close"]) if a > b) / len(combos["open_close"])
+    return {"n": len(combos["open_close"]), "days": len(known), "from": D.days[known[0]], "to": D.days[known[-1]],
+            "avg": {k: round(v, 4) for k, v in avg.items()}, "win": {k: round(v, 3) for k, v in win.items()},
+            "best": best, "better_close": round(better_close, 3),
+            "sell_n": len(sell_diff), "sell_open_gain": round(sum(sell_diff) / len(sell_diff), 4) if sell_diff else None,
+            "sell_open_better": round(sum(1 for x in sell_diff if x > 0) / len(sell_diff), 3) if sell_diff else None}
 
 
 def _combine(hs, px, v20, disposed, row):

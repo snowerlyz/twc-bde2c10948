@@ -182,6 +182,13 @@ class Paper:
                     raise ValueError("還沒有這檔的即時行情，暫時不能下市價單")
                 price = q["up"] if side == "B" else q["dn"]
                 tif = "IOC"
+            if kind in ("MOO", "MOC"):
+                # 開盤價／收盤價成交：參加集合競價、一定成交；價格只用來預留款項（以漲跌停價估）
+                if q and q["up"] and q["dn"]:
+                    price = q["up"] if side == "B" else q["dn"]
+                elif price:
+                    price = _floor_tick(price * (1.1 if side == "B" else 0.9))
+                tif = "ROD"
             if not price:
                 raise ValueError("請輸入價格")
             if not on_tick(price):
@@ -205,8 +212,13 @@ class Paper:
                 if not tp or trig.get("dir") not in ("le", "ge"):
                     raise ValueError("觸價條件不正確")
                 trig = {"px": tp, "dir": trig["dir"]}
+            plan = req.get("plan") or None
+            if plan:
+                plan = {"h": int(plan.get("h") or 0), "exit": plan.get("exit") or "open", "hz": plan.get("hz")}
+                if plan["h"] <= 0:
+                    plan = None
             self.s["seq"] += 1
-            o = {"id": self.s["seq"], "code": code, "name": req.get("name") or (q or {}).get("n") or code,
+            o = {"id": self.s["seq"], "plan": plan, "code": code, "name": req.get("name") or (q or {}).get("n") or code,
                  "side": side, "qty": qty, "price": round(price, 4), "kind": kind, "tif": tif, "dt": dtf,
                  "tag": req.get("tag") or ("dt" if dtf else "free"), "cover": cover,
                  "status": "waiting" if trig else "pending", "trigger": trig, "filled": 0, "avg": None,
@@ -241,7 +253,7 @@ class Paper:
     def _try_now(self, o):
         """剛送出的委託：盤中而且有最新行情時，先看能不能直接成交，剩下的開始排隊。"""
         q = self.q.get(o["code"])
-        if o["status"] != "pending" or not self._live(q):
+        if o["status"] != "pending" or not self._live(q) or o.get("kind") in ("MOO", "MOC"):
             return
         ph = phase(q["t"])
         if ph != "open":
@@ -417,6 +429,10 @@ class Paper:
                 pos["short_amt"] += px * sh - fee_s - tax_s
                 tax += tax_s
             self.s["cash"] += amt - fee - tax
+        if o.get("plan") and o["side"] == "B" and code in self.s["pos"] and self.s["pos"][code]["qty"] > 0:
+            pl = o["plan"]
+            self.s["pos"][code]["plan_exit"] = {"day": _add_weekdays(self.today(), pl["h"]), "h": pl["h"], "hz": pl.get("hz")}
+            self.s["pos"][code]["tag"] = pl.get("hz") or self.s["pos"][code].get("tag")
         o["filled"] += n
         o["fills"].append({"t": self.now_s()[11:19], "px": px, "n": n})
         o["avg"] = round(sum(f["px"] * f["n"] for f in o["fills"]) / o["filled"], 4)
@@ -465,9 +481,21 @@ class Paper:
                         changed = True
                     else:
                         continue
+                placed = o["at"][:10].replace("-", "")
+                if o.get("kind") == "MOO":                    # 開盤價成交
+                    if ph == "open" and not o.get("auct") and (placed < q["d"] or o["at"][11:] < "09:00:00") and q.get("o"):
+                        o["auct"] = True
+                        self._fill(o, q["o"], o["qty"] - o["filled"], "開盤集合競價，以開盤價成交")
+                        changed = True
+                    continue
+                if o.get("kind") == "MOC":                    # 收盤價成交
+                    if ph == "done" and not o.get("cauct") and (placed < q["d"] or o["at"][11:] < "13:30:00") and q["last"]:
+                        o["cauct"] = True
+                        self._fill(o, q["last"], o["qty"] - o["filled"], "收盤集合競價，以收盤價成交")
+                        changed = True
+                    continue
                 if ph in ("pre", "close"):
                     continue                                  # 開盤前、收盤集合競價期間：等撮合
-                placed = o["at"][:10].replace("-", "")
                 pre_open = placed < q["d"] or o["at"][11:] < "09:00:00"
                 if ph == "open":
                     if o["status"] == "pending":
@@ -489,8 +517,21 @@ class Paper:
                     if q["last"]:
                         self._auction(o, q["last"], q, "收盤")
                     changed = True
-            # 停損／停利（庫存設定的出場價）
+            # 依計畫到期出場：到期那天以開盤價賣出（回測：到期開盤賣比收盤賣好）
             p = self.s["pos"].get(code)
+            pe = (p or {}).get("plan_exit")
+            if p and pe and p["qty"] > 0 and ph == "open" and q["d"] >= pe["day"] and q.get("o") and self.pending_sell(code) == 0:
+                p.pop("plan_exit", None)
+                try:
+                    o = self.place({"code": code, "side": "S", "qty": int(p["qty"] // LOT), "kind": "MOO", "price": q["o"],
+                                    "name": p.get("name"), "tag": p.get("tag")})
+                    o["auct"] = True
+                    late = q["t"] > "09:01:00"
+                    self._fill(o, q["o"], o["qty"], "計畫到期，以開盤價賣出" + ("（程式開啟時已過開盤，以當天開盤價模擬）" if late else ""))
+                    self.save()
+                except Exception as e:
+                    log("模擬交易計畫出場失敗：%s" % e)
+            # 停損／停利（庫存設定的出場價）
             if p and ph == "open" and q["last"] and p["qty"] > 0:
                 lp = q["last"]
                 hit = None
@@ -532,7 +573,8 @@ class Paper:
             return
         for o in self.s["orders"]:
             placed = o["at"][:10].replace("-", "")
-            if o["status"] in ("queue", "partial", "pending") and (placed < d or (placed == d and o["at"][11:] < "13:30:00")):
+            cut = "09:00:00" if o.get("kind") == "MOO" else "13:30:00"     # 開盤價單：開盤後才下的，算明天的
+            if o["status"] in ("queue", "partial", "pending") and (placed < d or (placed == d and o["at"][11:] < cut)):
                 o["status"] = "expired" if o["filled"] == 0 else "partial_expired"
                 o["note"] = "收盤未成交，委託失效（當日有效）"
         for code, p in list(self.s["pos"].items()):
@@ -583,7 +625,7 @@ class Paper:
             rows.append({"code": code, "name": p.get("name") or code, "lots": sh / LOT, "avg": round(abs(cost / sh), 4) if sh else None,
                          "px": px, "val": round(val), "unreal": round(u), "ret": round(u / abs(cost), 4) if cost else None,
                          "tag": p.get("tag"), "open": p.get("open"), "dt": bool(p.get("dt_qty")) or sh < 0,
-                         "stop": p.get("stop"), "target": p.get("target")})
+                         "stop": p.get("stop"), "target": p.get("target"), "plan_exit": p.get("plan_exit")})
         return {"mv": mv, "unreal": unreal, "equity": self.s["cash"] + mv, "rows": rows}
 
     def view(self):
@@ -611,6 +653,21 @@ class Paper:
                     "pos": eq["rows"], "orders": list(reversed(act)), "done": list(reversed(done)),
                     "closed": list(reversed(closed[-100:])), "by_tag": by, "hist": self.s["hist"][-250:],
                     "created": self.s.get("created"), "quotes": quotes}
+
+
+def _floor_tick(p):
+    t = tick(p)
+    return round(math.floor(p / t + 1e-9) * t, 2)
+
+
+def _add_weekdays(d, n):
+    """從 d（YYYYMMDD）往後算 n 個平日（國定假日沒扣，實際交易日可能晚一兩天）。"""
+    x = dt.date(int(d[:4]), int(d[4:6]), int(d[6:]))
+    while n > 0:
+        x += dt.timedelta(days=1)
+        if x.weekday() < 5:
+            n -= 1
+    return x.strftime("%Y%m%d")
 
 
 def _p(x):
