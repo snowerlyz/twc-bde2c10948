@@ -241,6 +241,11 @@ def scheduler():
 def serve(port, update_fn):
     global _update_fn
     _update_fn = update_fn
+    try:
+        import winicon          # Windows：黑色視窗換上羅盤圖示，工作列也會顯示
+        winicon.apply(os.path.join(WEB, "icon.ico"))
+    except Exception:
+        pass
     httpd = None
     for p in range(port, port + 10):
         try:

@@ -5,7 +5,15 @@ $desk = [Environment]::GetFolderPath('Desktop')
 $lnk = Join-Path $desk '台股羅盤.lnk'
 $ws = New-Object -ComObject WScript.Shell
 $s = $ws.CreateShortcut($lnk)
-$s.TargetPath = Join-Path $root '啟動台股羅盤.bat'
+$bat = Join-Path $root '啟動台股羅盤.bat'
+# 用傳統主控台（conhost）開啟：Windows 11 預設的「終端機」不會套用捷徑與程式設定的圖示
+$conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+if (Test-Path $conhost) {
+  $s.TargetPath = $conhost
+  $s.Arguments = ('cmd.exe /c "{0}"' -f $bat)
+} else {
+  $s.TargetPath = $bat
+}
 $s.WorkingDirectory = $root
 $s.IconLocation = (Join-Path $root 'web\icon.ico') + ',0'
 $s.WindowStyle = 7
