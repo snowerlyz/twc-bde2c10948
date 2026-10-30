@@ -21,7 +21,7 @@ REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
 import os
-# 研究開關：額外條件（逗號列出 ivol、max），預設不開
+# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20），預設不開
 EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
@@ -64,6 +64,13 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
         return None
     last = T - 1
 
+    ind_groups = {}
+    if EXTRA & {"ind60", "ind20"}:
+        for i, c in enumerate(D.codes):
+            g = (getattr(D, "industry", {}) or {}).get(c)
+            if g:
+                ind_groups.setdefault(g, []).append(i)
+        ind_groups = {g: np.array(v) for g, v in ind_groups.items()}
     # ---- 每天每檔的條件（和加權指數的連動、近 3 個月相對強弱、成交金額）
     ext = {}
     for t in days:
@@ -98,6 +105,20 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
             with np.errstate(all="ignore"):
                 mx20 = np.where(np.isnan(seg), -np.inf, seg).max(axis=1) if seg.shape[1] else np.full(N, -np.inf)
             cols.append(np.clip(np.where(np.isfinite(mx20), mx20, 0.0) * 10.0, 0, 1.5))
+        for key, lb in (("ind60", 60), ("ind20", 20)):
+            # 產業動能：同產業（成交夠的股票）近 lb 天平均漲跌 − 加權指數；文獻：Moskowitz & Grinblatt 1999，預期越高越好
+            if key in EXTRA and t >= lb:
+                with np.errstate(all="ignore"):
+                    rr = np.log(A[:, t] / A[:, t - lb]) - np.log(tx[t] / tx[t - lb])
+                okr = ~np.isnan(rr) & (V[:, t] >= min_val)
+                im = np.zeros(N)
+                for g, ids in ind_groups.items():
+                    sel = ids[okr[ids]]
+                    if len(sel) >= 3:
+                        im[ids] = np.clip(rr[sel], -1, 1).mean()
+                cols.append(np.clip(im * (60.0 / lb) ** 0.5 * 3.0, -2, 2))
+            elif key in EXTRA:
+                cols.append(np.zeros(N))
         ext[t] = np.c_[tuple(cols)]
 
     out = {}

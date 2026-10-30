@@ -26,6 +26,7 @@ ACC_MIN_N = 300          # 前瞻實測樣本（檔次）太少不下判斷
 CUTS = [0.70, 0.80, 0.90, 0.95, 0.98]   # 篩選嚴格度：分數排名百分位
 CUT_MIN_N = 100          # 某種嚴格度在 60 天內至少要有這麼多檔次才評估
 WATCH_MIN_CUT = 0.90     # 「相對看好／看淡」只在前（後）10% 以內挑
+RANK_LIQ = os.environ.get("TWC_RANK_LIQ") == "1"   # 研究開關：只在成交足夠的股票之間排名
 
 
 def isnan(x):
@@ -113,6 +114,13 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             pb = pbh.get(u)
             if not pb:
                 return ph[u]
+            if RANK_LIQ:
+                # 只在成交足夠（會給評價）的股票之間排名；成交太少的放中間（反正一律中立）
+                order = sorted((i for i in pb if v20s[i][u] >= MIN_VAL), key=lambda i: pb[i])
+                n = len(order)
+                rk = {i: 0.5 for i in pb}
+                rk.update({i: (j + 1) / n for j, i in enumerate(order)})
+                return rk
             order = sorted(pb, key=lambda i: pb[i])
             n = len(order)
             return {i: (j + 1) / n for j, i in enumerate(order)}
