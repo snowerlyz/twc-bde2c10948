@@ -1907,7 +1907,19 @@ function renderTicker() {
 // ====================================================================== 模擬交易
 const PTAG = { dt: "當沖", short: "短線（約 1 週）", mid: "波段（約 1 個月）", long: "長線（約 3 個月）", free: "自由操作" };
 const pt = { code: "", side: "B", dt: false, tag: "short", tif: "ROD", kind: "LMT", qty: 1, price: "", trig: false, trigPx: "", trigDir: "le" };
-let paperTimer = null, paperQ = null, paperV = null, paperResetArm = false;
+let paperTimer = null, paperQ = null, paperV = null, paperResetArm = false, paperErr = "";
+// 股票欄位可以輸入代號或名稱（例如 2603、長榮、2603 長榮）
+function resolveCode(raw, strict) {
+  if (!raw) return "";
+  const m = raw.toUpperCase().match(/^([0-9][0-9A-Z]{3,5})/);
+  if (m && S.byCode[m[1]]) return m[1];
+  if (strict) return "";
+  const st = (S.latest && S.latest.stocks) || [];
+  const ex = st.find((r) => r.n === raw);
+  if (ex) return ex.c;
+  const cand = st.filter((r) => r.n && (r.n.startsWith(raw) || r.n.includes(raw))).sort((a, b) => (b.n.startsWith(raw) - a.n.startsWith(raw)) || ((b.val || 0) - (a.val || 0)));
+  return cand.length ? cand[0].c : (m ? m[1] : "");
+}
 const ptick = (p) => p < 10 ? 0.01 : p < 50 ? 0.05 : p < 100 ? 0.1 : p < 500 ? 0.5 : p < 1000 ? 1 : 5;
 const pround = (p) => { const t = ptick(p); return Math.round(Math.round(p / t) * t * 100) / 100; };
 const money = (x) => x == null ? "—" : (x < 0 ? "−" : "") + Math.abs(Math.round(x)).toLocaleString("en-US");
@@ -1966,7 +1978,8 @@ async function vPaper(tok, arg) {
 }
 async function paperRefresh(tok) {
   try {
-    const [v, q] = await Promise.all([papi(""), pt.code ? papi("quote/" + pt.code).catch(() => null) : Promise.resolve(null)]);
+    const [v, q] = await Promise.all([papi(""), pt.code ? papi("quote/" + pt.code).catch((e) => ({ q: null, err: e.message })) : Promise.resolve(null)]);
+    if (pt.code && q) paperErr = q.q ? "" : `抓不到 ${pt.code} 的即時報價${q.err ? "：" + q.err : "（請稍候再試）"}`;
     if (tok != null && tok !== routeToken) return;
     if (!location.hash.startsWith("#/paper")) return;
     paperV = v; paperQ = q && q.q;
@@ -2006,10 +2019,10 @@ function alertBox(msg, ok) {
   const b = $("#pmsg"); if (b) { b.className = "pmsg " + (ok ? "ok" : "bad"); b.textContent = msg; }
 }
 function renderTicket() {
-  const opts = (S.latest && S.latest.stocks || []).filter((r) => r.val >= 0.05).map((r) => `<option value="${r.c}">${esc(r.n)}</option>`).join("");
+  const opts = (S.latest && S.latest.stocks || []).filter((r) => r.val >= 0.05).map((r) => `<option value="${r.c} ${esc(r.n)}"></option>`).join("");
   $("#pticket").innerHTML = `<div class="card-h"><h2>下單</h2></div>
     <div class="pform">
-      <label>股票<input id="pcode" list="pcodes" value="${esc(pt.code)}" placeholder="代號，例如 2330" autocomplete="off" inputmode="numeric"><datalist id="pcodes">${opts}</datalist></label>
+      <label>股票<input id="pcode" list="pcodes" value="${esc(pt.code)}${pt.code && S.byCode[pt.code] ? " " + esc(S.byCode[pt.code].n) : ""}" placeholder="代號或名稱，例如 2603 或 長榮" autocomplete="off"><datalist id="pcodes">${opts}</datalist></label>
       <div class="seg fill" id="pside"><button data-v="B" class="buy">買進</button><button data-v="S" class="sell">賣出</button></div>
       <div class="prow">
         <label class="chk"><input type="checkbox" id="pdt"${pt.dt ? " checked" : ""}> 當沖（可先賣後買）</label>
@@ -2037,9 +2050,10 @@ function renderTicket() {
   const sideDraw = () => { $$("#pside button").forEach((b) => b.classList.toggle("on", b.dataset.v === pt.side)); $("#psubmit").textContent = (pt.side === "B" ? "送出買進" : "送出賣出") + "委託"; $("#psubmit").className = "btn primary " + (pt.side === "B" ? "bbuy" : "bsell"); updEstimate(); };
   sideDraw();
   $("#pside").onclick = (e) => { const b = e.target.closest("[data-v]"); if (b) { pt.side = b.dataset.v; sideDraw(); } };
-  const setCode = async () => { const c = $("#pcode").value.trim().toUpperCase(); if (c === pt.code) return; pt.code = c; pt.price = ""; $("#pprice").value = ""; paperQ = null; renderBook(); if (c) { try { paperQ = (await papi("quote/" + c)).q; } catch { } renderBook(); if (paperQ && !pt.price) { const p0 = paperQ.last || (paperQ.bids[0] || [])[0]; if (p0) { pt.price = p0; $("#pprice").value = p0; } } updEstimate(); } };
+  const setCode = async () => { const raw = $("#pcode").value.trim(); const c = resolveCode(raw); if (!c) { pt.code = ""; paperErr = raw ? `找不到「${raw}」，請輸入股票代號或從清單中選` : ""; renderBook(); return; } const disp = c + (S.byCode[c] ? " " + S.byCode[c].n : ""); if (raw !== disp) $("#pcode").value = disp; if (c === pt.code) return; paperErr = ""; pt.code = c; pt.price = ""; $("#pprice").value = ""; paperQ = null; renderBook(); if (c) { try { const r = await papi("quote/" + c); paperQ = r.q; if (!paperQ) paperErr = `抓不到 ${c} 的即時報價${r.err ? "：" + r.err : ""}`; } catch (e) { paperErr = `抓不到 ${c} 的即時報價：${e.message}`; } renderBook(); if (paperQ && !pt.price) { const p0 = paperQ.last || (paperQ.bids[0] || [])[0]; if (p0) { pt.price = p0; $("#pprice").value = p0; } } updEstimate(); } };
   $("#pcode").addEventListener("change", setCode);
-  $("#pcode").addEventListener("input", () => { const c = $("#pcode").value.trim(); if (/^[0-9A-Z]{4,6}$/i.test(c) && S.byCode[c.toUpperCase()]) setCode(); });
+  $("#pcode").addEventListener("input", () => { const raw = $("#pcode").value.trim(); const c = resolveCode(raw, true); if (c) setCode(); });
+  $("#pcode").addEventListener("keydown", (e) => { if (e.key === "Enter") setCode(); });
   $("#pdt").onchange = () => { pt.dt = $("#pdt").checked; if (pt.dt) { pt.tag = "dt"; $("#ptag").value = "dt"; } updEstimate(); };
   $("#ptag").onchange = () => { pt.tag = $("#ptag").value; };
   $("#pprice").oninput = () => { pt.price = $("#pprice").value; updEstimate(); };
@@ -2088,8 +2102,9 @@ function updEstimate() {
 function renderBook() {
   const el = $("#pbook"); if (!el) return;
   const q = paperQ;
-  if (!pt.code) { el.innerHTML = '<p class="note">輸入股票代號，就會顯示即時五檔。</p>'; return; }
-  if (!q) { el.innerHTML = `<p class="note">正在讀取 ${esc(pt.code)} 的即時五檔…（非交易時間會顯示最後一筆）</p>`; return; }
+  if (!pt.code && !paperErr) { el.innerHTML = '<p class="note">輸入股票代號或名稱，就會顯示即時五檔。</p>'; return; }
+  if (paperErr) { el.innerHTML = `<p class="note down">${esc(paperErr)}</p>`; return; }
+  if (!q) { el.innerHTML = `<p class="note">正在讀取 ${esc(pt.code)} ${esc((S.byCode[pt.code] || {}).n || "")} 的即時五檔…（非交易時間會顯示最後一筆）</p>`; return; }
   const mine = ((paperV && paperV.orders) || []).filter((o) => o.code === pt.code);
   const mark = (p, side) => { const m = mine.filter((o) => Math.abs(o.price - p) < 1e-6 && o.side === side); return m.length ? `<span class="pmine">我 ${m.reduce((a, o) => a + o.qty - o.filled, 0)} 張${m[0].ahead != null ? `・前面約 ${Math.ceil(m[0].ahead)}` : ""}</span>` : ""; };
   const asks = [...q.asks].reverse(), bids = q.bids;
