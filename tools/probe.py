@@ -10,7 +10,10 @@ def get(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": "https://mis.twse.com.tw/stock/fibest.jsp?stock=2330", "Accept": "application/json"})
     with op.open(req, timeout=20) as r:
         return r.read()
-get("https://mis.twse.com.tw/stock/index.jsp")
+try:
+    get("https://mis.twse.com.tw/stock/index.jsp")
+except Exception as e:
+    print("index", e)
 seq = []
 t0 = time.time()
 while time.time() - t0 < 90:
