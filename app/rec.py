@@ -27,6 +27,7 @@ CUTS = [0.70, 0.80, 0.90, 0.95, 0.98]   # 篩選嚴格度：分數排名百分�
 CUT_MIN_N = 100          # 某種嚴格度在 60 天內至少要有這麼多檔次才評估
 WATCH_MIN_CUT = 0.90     # 「相對看好／看淡」只在前（後）10% 以內挑
 RANK_LIQ = os.environ.get("TWC_RANK_LIQ") == "1"   # 研究開關：只在成交足夠的股票之間排名
+WATCH_LIQ = os.environ.get("TWC_WATCH_LIQ", "0") == "1"   # 相對模式改用「成交足夠的股票之間」的排名決定檔數
 
 
 def isnan(x):
@@ -109,72 +110,90 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             continue
         pbh = (PB or {}).get(hn, {}).get("pb") or {}
 
-        def rank_of(u):
-            """第 u 天的排序依據：有機率就用機率的排名，沒有就用綜合分數的排名。"""
-            pb = pbh.get(u)
-            if not pb:
-                return ph[u]
-            if RANK_LIQ:
+        def rank_of(u, liq=False):
+            """第 u 天的排序依據：有機率就用機率的排名，沒有就用綜合分數的排名。
+            liq＝只在成交足夠（會給評價）的股票之間排名，成交太少的放中間（反正一律中立）。"""
+            pb = pbh.get(u) or ph[u]
+            if liq or (RANK_LIQ and pbh.get(u)):
                 # 只在成交足夠（會給評價）的股票之間排名；成交太少的放中間（反正一律中立）
                 order = sorted((i for i in pb if v20s[i][u] >= MIN_VAL), key=lambda i: pb[i])
                 n = len(order)
                 rk = {i: 0.5 for i in pb}
                 rk.update({i: (j + 1) / n for j, i in enumerate(order)})
                 return rk
+            if not pbh.get(u):
+                return ph[u]
             order = sorted(pb, key=lambda i: pb[i])
             n = len(order)
             return {i: (j + 1) / n for j, i in enumerate(order)}
         # ---- 每天（結果已揭曉的）：每檔 (分數百分位, 報酬, 比加權指數多賺)
-        data = {}
+        #      L＝False：在全部股票之間排名（「建議」用）；True：只在成交足夠的股票之間排名（「相對」用）
+        data = {False: {}, True: {}}
         for u in sorted(ph):
             if u + h > last or isnan(tx[u]) or isnan(tx[u + h]) or tx[u] <= 0:
                 continue
             bm = tx[u + h] / tx[u] - 1
-            rows = []
-            for i, p in rank_of(u).items():
-                if v20s[i][u] < MIN_VAL:
-                    continue
-                a0, a1 = A_all[i][u], A_all[i][u + h]
-                if isnan(a0) or isnan(a1) or a0 <= 0:
-                    continue
-                r = a1 / a0 - 1
-                rows.append((p, r, r - bm))
-            if len(rows) >= 200:
-                data[u] = rows
-        known = sorted(data)
+            for L in ((False, True) if WATCH_LIQ else (False,)):
+                rows = []
+                for i, p in rank_of(u, L).items():
+                    if v20s[i][u] < MIN_VAL:
+                        continue
+                    a0, a1 = A_all[i][u], A_all[i][u + h]
+                    if isnan(a0) or isnan(a1) or a0 <= 0:
+                        continue
+                    r = a1 / a0 - 1
+                    rows.append((p, r, r - bm))
+                if len(rows) >= 200:
+                    data[L][u] = rows
+        if not WATCH_LIQ:
+            data[True] = data[False]
+        known = sorted(data[False])
 
         def pick(rows, sd, c):
             return [x for x in rows if (x[0] >= c if sd == "buy" else x[0] <= 1 - c)]
 
         st = {}
-        for sd in ("buy", "sell"):
-            for c in CUTS:
-                dd = {}
-                for u in known:
-                    xs = pick(data[u], sd, c)
-                    good = sum(1 for x in xs if (x[2] > 0 if sd == "buy" else x[2] < 0))
-                    dd[u] = (good, len(xs), sum(x[2] for x in xs), sum(1 for x in xs if x[1] > 0))
-                st[(sd, c)] = dd
+        for L in (False, True):
+            for sd in ("buy", "sell"):
+                for c in CUTS:
+                    dd = {}
+                    for u in known:
+                        xs = pick(data[L].get(u, []), sd, c)
+                        good = sum(1 for x in xs if (x[2] > 0 if sd == "buy" else x[2] < 0))
+                        dd[u] = (good, len(xs), sum(x[2] for x in xs), sum(1 for x in xs if x[1] > 0))
+                    st[(L, sd, c)] = dd
 
-        def trail(t, sd):
+        def trail(t, sd, L=False):
             tr = [u for u in known if t - h - ACC_DAYS < u <= t - h]
             acc = {}
             if len(tr) >= 20:
                 for c in CUTS:
-                    w = sum(st[(sd, c)][u][0] for u in tr)
-                    n = sum(st[(sd, c)][u][1] for u in tr)
+                    w = sum(st[(L, sd, c)][u][0] for u in tr)
+                    n = sum(st[(L, sd, c)][u][1] for u in tr)
                     if n >= CUT_MIN_N:
                         acc[c] = w / n
             return acc, tr
 
+        def watch_cut(t, sd):
+            """「相對」模式要用的嚴格度（前／後 10% 以內最準的一種）。"""
+            acc, _ = trail(t, sd, WATCH_LIQ)
+            cs = [k for k in acc if k >= WATCH_MIN_CUT]
+            return (max(cs, key=lambda k: (acc[k], k)) if cs else None), acc
+
         # ---- walk-forward：過去每一天照「當時」的規則挑，之後真正的成績
         wf = {"buy": {}, "sell": {}}
+        wr = {"buy": {}, "sell": {}}     # 每天「相對」清單（不論當天是建議或相對）之後的成績
         for sd in ("buy", "sell"):
             for t in known:
                 acc, _ = trail(t, sd)
                 c, kind = _choose(acc)
+                if kind == "watch":
+                    c, _ = watch_cut(t, sd)
                 if c is not None:
-                    wf[sd][t] = (kind, c) + st[(sd, c)][t]
+                    wf[sd][t] = (kind, c) + st[(kind == "watch" and WATCH_LIQ, sd, c)][t]
+                cw, _ = watch_cut(t, sd)
+                if cw is not None:
+                    wr[sd][t] = st[(WATCH_LIQ, sd, cw)][t]
         lv = (((live or {}).get("rh") or {}).get(hn) or {})
         gate, label, sides, bt = {}, {}, [], {"days": 0}
         for sd in ("buy", "sell"):
@@ -195,14 +214,23 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             acc, tr = trail(last, sd)
             c, kind = _choose(acc)
             off = kind == "ok" and rate is not None and rate < ACC_FAIL
-            if off:
-                cs = [k for k in acc if k >= WATCH_MIN_CUT]
-                c = max(cs, key=lambda k: (acc[k], k)) if cs else c
+            if off or kind == "watch":
+                cw, accw = watch_cut(last, sd)
+                if cw is not None:
+                    c, acc = cw, accw
                 kind = "watch"
+            LW = kind == "watch" and WATCH_LIQ
             t0 = last - h
             td = wf[sd].get(t0)
+            # 「相對」清單照當時規則的實際成績（全期、最近 60 天、平均每天檔數）
+            wr_all = [wr[sd][t] for t in known if t in wr[sd]]
+            wr_60 = [wr[sd][t] for t in known[-ACC_DAYS:] if t in wr[sd]]
+
+            def _wr(xs):
+                n = sum(x[1] for x in xs)
+                return round(sum(x[0] for x in xs) / n, 4) if n else None
             # 今天的參考數字：所選嚴格度在最近 60 天的實際表現
-            pool = [x for u in tr for x in pick(data[u], sd, c)] if c is not None else []
+            pool = [x for u in tr for x in pick(data[LW].get(u, []), sd, c)] if c is not None else []
             label[sd] = {"c": c, "kind": kind,
                          # 用中位數（典型的一檔），不用平均數：平均數容易被少數大漲股拉高，和準確度方向矛盾
                          "ex": _q([x[2] for x in pool], 0.5),
@@ -218,24 +246,34 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
                         "off": off, "mode": {"ok": "建議", "watch": "相對"}.get(kind),
                         "cut": c, "trail": None if c is None or c not in acc else round(acc[c], 4),
                         "today": round(td[2] / td[3], 4) if td and td[3] and td[0] == "ok" else None,
-                        "today_n": td[3] if td and td[0] == "ok" else 0}
+                        "today_n": td[3] if td and td[0] == "ok" else 0,
+                        "w_all": _wr(wr_all), "w_60": _wr(wr_60),
+                        "w_cnt": round(sum(x[1] for x in wr_60) / len(wr_60), 1) if wr_60 else 0, "liq": LW}
             bt["days"] = max(bt["days"], len(ok_days))
             bt[sd + "_win"] = None if r_all is None else round(r_all, 4)
             bt[sd + "_ex"] = None if ex_all is None else round(ex_all, 5)
             bt[sd + "_up"] = None if up_all is None else round(up_all, 4)
             bt[sd + "_n"] = n_all
             bt[sd + "_ok"] = kind == "ok"
+        if os.environ.get("TWC_REC_DEBUG"):      # 研究用：各嚴格度固定使用時的成績（全期、最近 60 天）
+            k60 = set(known[-ACC_DAYS:])
+            out.setdefault("_fix", {})[hn] = {
+                "%s%d" % (sd, round((1 - c) * 100)): [
+                    round(sum(st[(False, sd, c)][u][0] for u in ks) / max(1, sum(st[(False, sd, c)][u][1] for u in ks)), 4)
+                    for ks in (known, [u for u in known if u in k60])] for sd in ("buy", "sell") for c in CUTS}
         tun[hn] = {"cut": {sd: label[sd]["c"] for sd in label}, "kind": {sd: label[sd]["kind"] for sd in label}}
         timing = _timing(D, A_all, rank_of, sorted(ph), h, last, v20s)
         # ---- 今天每檔股票
         pbt = (PB or {}).get(hn, {}).get("today") or {}
+        rk_liq = rank_of(last, True) if (last in ph and WATCH_LIQ) else {}
         for i, p in (rank_of(last) if last in ph else {}).items():
             a = "hold"
             for sd in ("buy", "sell"):
                 L_ = label[sd]
                 if L_["c"] is None:
                     continue
-                if (p >= L_["c"]) if sd == "buy" else (p <= 1 - L_["c"]):
+                pp = rk_liq.get(i, p) if (L_["kind"] == "watch" and WATCH_LIQ) else p
+                if (pp >= L_["c"]) if sd == "buy" else (pp <= 1 - L_["c"]):
                     a = sd if L_["kind"] == "ok" else "w" + sd
                     x = L_
             d = per_stock.setdefault(codes[i], {})
