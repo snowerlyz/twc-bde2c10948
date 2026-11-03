@@ -14,6 +14,14 @@ SEL_HL = 60                               # 挑比例時，越近的日子越重
 TRAIN_DAYS = 250
 MIN_TRAIN = 40
 
+import os as _os
+# 研究開關：TWC_ML_FIXW='short=0.5,mid=0.5' 指定期間固定機器學習比例（預設不開，依實測自動挑）
+_FIXW = {}
+for _p in (_os.environ.get("TWC_ML_FIXW") or "").split(","):
+    if "=" in _p:
+        _a, _b = _p.split("=", 1)
+        _FIXW[_a.strip()] = float(_b)
+
 
 def available():
     try:
@@ -117,7 +125,7 @@ def blend(store, fstore, pct_hist, H, keys, say=None):
                     for w in WEIGHTS:
                         cw = (1 - w) * la + w * ma
                         ics[w].append((t, float(np.corrcoef(cw[m], yy)[0, 1])))
-            w = pick_w(t)
+            w = _FIXW[hn] if hn in _FIXW else pick_w(t)
             chosen_w.append(w)
             comb = [((1 - w) * la[j] + w * ma[j], i) for j, i in enumerate(alive)]
             newp = _rank01(comb)
@@ -129,6 +137,9 @@ def blend(store, fstore, pct_hist, H, keys, say=None):
         report[hn] = {"n": len(ic_lin),
                       "ic_lin": round(sum(ic_lin) / len(ic_lin), 4) if ic_lin else None,
                       "ic_mix": round(sum(ic_mix) / len(ic_mix), 4) if ic_mix else None,
+                      "ic_lin60": round(sum(ic_lin[-60:]) / len(ic_lin[-60:]), 4) if ic_lin else None,
+                      "ic_mix60": round(sum(ic_mix[-60:]) / len(ic_mix[-60:]), 4) if ic_mix else None,
+                      "w_hist": chosen_w[-60:],
                       "better": round(sum(1 for a, b in zip(ic_lin, ic_mix) if b > a) / len(ic_lin), 3) if ic_lin else None,
                       "w": chosen_w[-1] if chosen_w else None,
                       "w_ic": {str(w): round(sum(c for _, c in v) / len(v), 4) for w, v in ics.items() if v}}
