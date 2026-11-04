@@ -90,6 +90,7 @@ const GLOSS = {
   foi: "外資在台指期押多還是押空的淨口數。正數＝押漲，負數＝押跌；最近的變化方向比數字大小更重要。",
   pc: "選擇權裡「賭跌」的部位 ÷「賭漲」的部位。在台灣，這個比值偏高時，常被解讀為下方支撐較強。",
   dtscore: "當沖分數：依今天收盤後的資料，估計下一個交易日「開盤買、收盤賣」能賺錢的機會。",
+  risk: "大跌風險：估計加權指數「5 個交易日內最低收盤比今天低 4% 以上」與「下個交易日跌 2% 以上」的機率。依據是加權指數 2000 年以來的每日收盤：近一個月波動、波動是否突然變大、離近 3 個月高點多遠、離季線多遠、最近幾天的漲跌；早上 7:35 美股收盤後，再加上隔夜的台積電 ADR 與費城半導體。每天只用當時已知的資料重新估計（walk-forward）。等級是今天的機率在過去二十年中的位置：後 50% 低、50%～75% 正常、75%～90% 偏高、前 10% 高。這是在估「風險有多大」，不是預測「會不會跌」：高風險的日子隔天平均漲跌接近 0，只是上下震盪變大；突然的消息（例如國際突發事件）在發生前通常看不出來。",
   mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
   paperpos: "未實現損益＝現在用現價賣掉、扣掉手續費和證交稅之後，比買進成本（含買進手續費）多或少多少。停損／停利：成交價碰到你設定的價格，就自動以當下的買一價送出賣單（之後一樣要排隊才成交）。",
   timing: "買賣時機的依據：把最近 250 個已揭曉交易日、排名前 5%（賣出看後 5%）的股票拿來比較四種做法——隔天開盤買或收盤前買 × 到期那天開盤賣或收盤賣——扣掉手續費和稅之後誰的平均報酬比較好。台股常見「開高走低」，所以多半是收盤前買、開盤賣比較好；每天都會用最新結果重算。另外也測過「回檔掛低價買」「固定停損停利」「移動停損」「評價變差就賣」，兩年回測平均都比單純持有到期差（停損停利會砍掉後來大漲的股票），所以沒有當成預設。",
@@ -631,8 +632,9 @@ async function vHome(tok) {
   try { picks = (await api("warrant_picks")).picks.slice(0, 5); } catch { }
   try { RC = await api("recs"); } catch { }
   try { RP = await api("report"); } catch { }
-  let MD = null;
+  let MD = null, LV = null;
   try { MD = await api("model"); } catch { }
+  try { LV = await api("live"); } catch { }
   if (tok !== routeToken) return;
   const rated = L.stocks.filter((r) => r.ra && !r.etf);
   const cnt = HZ.map((h, i) => { const c = { B: 0, b: 0, S: 0, s: 0 }; rated.forEach((r) => { const a = r.ra[i]; if (a in c) c[a]++; }); return c; });
@@ -640,6 +642,7 @@ async function vHome(tok) {
   view.innerHTML = `
   <h1 class="grad">今天的評價</h1>
   <p class="lead">依 ${dayFull(L.day)} 收盤資料，替每檔股票打分：建議買、相對看好、中立、相對看淡、建議賣。準確度沒達標時不硬喊「建議」。</p>
+  ${riskCard(M.risk, LV)}
   ${guideCard(RC, cnt)}
   <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
     const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
@@ -1595,6 +1598,42 @@ function endDay(day, n) {
   d.setDate(d.getDate() + Math.round(n * 7 / 5));
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
+// 大跌風險（加權指數）：等級、機率、怎麼應對；細節收在可展開區塊
+const RISK_TONE = { "低": "rk0", "正常": "rk1", "偏高": "rk2", "高": "rk3" };
+const RISK_DO = {
+  "低": "照常操作。評價照常參考。",
+  "正常": "照常操作，記得每筆都想好停損。",
+  "偏高": "大盤上下震盪變大：新買進可以分批、不要一次買滿；手上的股票先想好跌到哪裡要賣。",
+  "高": "降低持股（例如減到平常的一半）、不追高、嚴守停損。「相對看好」比的是大盤，大盤一起大跌時它們也可能跟著跌。",
+};
+function riskCard(R, LV) {
+  if (!R || !R.level) return "";
+  const P = (v) => v == null ? "—" : (v * 100 < 10 ? (v * 100).toFixed(1) : Math.round(v * 100)) + "%";
+  const w5 = R.w5, d1 = R.d1, bt = R.bt || {}, A = bt.all || {}, Y = bt.y2 || {};
+  const rate = (arr, lv) => ((arr || []).find((x) => x.lv === lv) || {}).rate;
+  const ov = d1.ov;
+  const morning = ov ? `已加入隔夜美股（${ov.day.slice(4, 6)}/${ov.day.slice(6)} 收盤：台積電 ADR ${(ov.by.TSM * 100).toFixed(1)}%、費城半導體 ${(ov.by["^SOX"] * 100).toFixed(1)}%）` : "美股收盤後（隔天早上 7:35）會再加上隔夜美股更新";
+  const lr = (LV && LV.risk) || null;
+  const liveRows = lr ? ["高", "偏高"].filter((k) => lr[k] && lr[k].n1).map((k) => `${k} ${lr[k].n1} 天，隔天跌 2% 以上 ${P(lr[k].d1)}${lr[k].n5 ? `；一週內跌 4% 以上 ${P(lr[k].w5)}（${lr[k].n5} 天）` : ""}`) : [];
+  const os_ = d1.ov_stat;
+  return `<section class="card section riskcard ${RISK_TONE[R.level]}"><div class="card-h"><h2>${svgI("fut")} 大盤大跌風險</h2><span class="rk ${RISK_TONE[R.level]}">${R.level}</span>${help("risk")}</div>
+    <div class="kv mini rkv">
+      <div><span>5 個交易日內跌 4% 以上</span><b class="num">${P(w5.p)}</b><span class="note">平常約 ${P(w5.base)}</span></div>
+      <div><span>下個交易日跌 2% 以上</span><b class="num">${P(d1.p)}</b><span class="note">平常約 ${P(d1.base)}</span></div>
+    </div>
+    <p class="rkdo"><b>怎麼應對：</b>${RISK_DO[R.level]}</p>
+    <p class="note" style="margin:4px 0 0">依據：${esc((R.why || []).join("；"))}。${morning}。</p>
+    <details class="fold"><summary class="note">準不準？高風險時減碼有沒有用？</summary>
+      <p class="note" style="margin:6px 0 0">${R.since} 年以來，每天只用當時已知的資料估計，各等級後來真的發生的比例：</p>
+      <table class="tbl rktbl"><thead><tr><th>等級</th><th>5 天內跌 4% 以上</th><th>隔天跌 2% 以上</th></tr></thead><tbody>
+      ${["低", "正常", "偏高", "高"].map((k) => `<tr${k === R.level ? ' class="on"' : ""}><td><span class="rk ${RISK_TONE[k]}">${k}</span></td><td class="num">${P(rate(w5.levels, k))}</td><td class="num">${P(rate(d1.levels, k))}</td></tr>`).join("")}
+      </tbody></table>
+      ${os_ ? `<p class="note">加入隔夜美股後（最近 ${os_.n} 個交易日實測）：風險最高的一成日子，隔天真的跌 2% 以上的比例 ${P(os_.top_o)}（只看台股資料是 ${P(os_.top_b)}，平均 ${P(os_.base)}）。</p>` : ""}
+      ${A.hold && A.half ? `<p class="note">應對的回測（${bt.from.slice(0, 4)} 年起，只在「高」時把持股減半）：最大回落 ${P(-A.hold.mdd)} → ${P(-A.half.mdd)}，年報酬 ${P(A.hold.cagr)} → ${P(A.half.cagr)}。${Y.hold && Y.half ? `但最近兩年大多頭，減碼會少賺（年報酬 ${P(Y.hold.cagr)} → ${P(Y.half.cagr)}）。` : ""}風險高時隔天平均漲跌接近 0（${bt.hi_next_up != null ? `${P(bt.hi_next_up)} 的日子上漲` : ""}），所以這是控制虧損的方法，不是預測下跌。</p>` : ""}
+      ${liveRows.length ? `<p class="note">前瞻實測（每天事先存下的等級）：${esc(liveRows.join("；"))}。</p>` : ""}
+      <p class="note">限制：完全沒有前兆的突發消息，發生前通常看不出來；這裡能做的是在第一次大跌之後、或美股先跌的隔天早上提高警示。</p>
+    </details></section>`;
+}
 function mktCard(L, MD) {
   const M = L.market, MC = (MD && MD.market_check) || {};
   if (!HZ.some((h) => M.horizons[h] && M.horizons[h].fc)) return "";
@@ -1694,7 +1733,13 @@ function stockSummary(r, hs, RC, px) {
   }[a];
   const lot = px ? px * 1000 : null;
   const lotTxt = lot ? `買一張（1,000 股）約 ${lot >= 1e4 ? (lot / 1e4).toFixed(lot >= 1e5 ? 0 : 1) + " 萬" : fmtInt(Math.round(lot))} 元，也可以只買幾股（零股）。` : "";
-  return `<p class="ssum"><b>一句話（${HZ_NAME[i]}，約 ${HZ_SHORT[i]}）：</b>${rTag(a)} ${esc(msg)}${lotTxt ? `<span class="note">${lotTxt}</span>` : ""}</p>`;
+  const R = S.latest && S.latest.market && S.latest.market.risk;
+  let be = "";
+  if (r.be != null) {
+    const hi = R && (R.level === "高" || R.level === "偏高");
+    be = `<span class="note">${hi ? `目前大盤大跌風險「${R.level}」。` : ""}大盤一天跌 3% 時，這檔大約${r.be >= 0 ? `跌 ${(Math.max(0, r.be) * 3).toFixed(1)}%` : "反而會漲"}（依近 120 天和大盤的連動；${r.be >= 1.2 ? "比大盤更容易大起大落" : r.be <= 0.6 ? "比大盤穩" : "和大盤差不多"}）。</span>`;
+  }
+  return `<p class="ssum"><b>一句話（${HZ_NAME[i]}，約 ${HZ_SHORT[i]}）：</b>${rTag(a)} ${esc(msg)}${lotTxt ? `<span class="note">${lotTxt}</span>` : ""}${be}</p>`;
 }
 function recBanner(rec, h) {
   if (!rec) return "";

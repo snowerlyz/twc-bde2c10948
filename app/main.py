@@ -156,11 +156,22 @@ def analyze(prog=None):
         write_json(os.path.join(RESULTS, "recs.json"), recs)
     except Exception as e:
         log("買賣建議失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 大跌風險（加權指數）與每檔和大盤的連動
+    risk_out = None
+    try:
+        import risk as _rk
+        importlib.reload(_rk)
+        risk_out, beta = _rk.build(D, A_all, D.codes)
+        for r in stocks:
+            if r["c"] in beta:
+                r["be"] = beta[r["c"]]
+    except Exception as e:
+        log("大跌風險失敗：%s\n%s" % (e, traceback.format_exc()))
     # 前瞻實測：存下今天的預測，並替以前存的預測對答案
     try:
         import predlog as _pl
         importlib.reload(_pl)
-        _pl.save(D, res, stocks, dt, (sec_res or {}).get("sectors"), recs)
+        _pl.save(D, res, stocks, dt, (sec_res or {}).get("sectors"), recs, risk_out)
         write_json(os.path.join(RESULTS, "live.json"), live if live is not None else _pl.evaluate(D, A_all))
     except Exception as e:
         log("前瞻實測失敗：%s\n%s" % (e, traceback.format_exc()))
@@ -233,7 +244,7 @@ def analyze(prog=None):
     latest = {
         "day": D.days[-1], "days": D.T, "first_day": D.days[0],
         "generated": now_tw().strftime("%Y-%m-%d %H:%M"),
-        "market": {k: v for k, v in mkt.items() if k != "check"},
+        "market": dict({k: v for k, v in mkt.items() if k != "check"}, risk=risk_out),
         "industries": res["industries"],
         "stocks": stocks,
         "model": {hn: {k: res["model"]["horizons"][hn][k] for k in ("label", "top_hit", "base_hit", "spread_avg", "spread_win", "eval_days", "ic_avg", "rel")}

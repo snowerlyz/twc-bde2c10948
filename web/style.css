@@ -742,3 +742,14 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--
 .tmline { margin: 6px 0 0; padding: 7px 10px; border-left: 3px solid var(--brass); background: var(--brass-soft); border-radius: 0 8px 8px 0; color: var(--ink-2); }
 .pplan { font-size: 14px; color: var(--ink-2); background: var(--brass-soft); border-radius: 10px; padding: 8px 12px; }
 .pplan .btn { margin-left: 6px; }
+/* 大盤大跌風險 */
+.rk { display: inline-flex; align-items: center; height: 24px; padding: 0 12px; border-radius: 99px; font-size: 13px; font-weight: 700; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--surface-2); margin-left: 8px; }
+.rk.rk0 { color: var(--muted); }
+.rk.rk2 { color: var(--brass); border-color: color-mix(in srgb, var(--brass) 60%, transparent); background: var(--brass-soft); }
+.rk.rk3 { color: #fff; background: linear-gradient(135deg, #f0a64a, #d9682b); border-color: transparent; }
+.riskcard.rk3 { border-color: color-mix(in srgb, #e07a35 55%, transparent); }
+.riskcard.rk2 { border-color: color-mix(in srgb, var(--brass) 40%, transparent); }
+.riskcard .rkv { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 560px; }
+.riskcard .rkdo { margin: 10px 0 0; }
+.rktbl { margin: 8px 0; max-width: 420px; }
+.rktbl tr.on td { background: var(--surface-3); }

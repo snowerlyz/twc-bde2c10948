@@ -17,7 +17,7 @@ def isnan(x):
     return x is None or x != x
 
 
-def save(D, res, stocks, dt, sectors=None, recs=None):
+def save(D, res, stocks, dt, sectors=None, recs=None, risk=None):
     day = D.days[-1]
     path = os.path.join(LOG_DIR, day + ".json.gz")
     # 同一天收盤後可以更新預測（例如晚上補上融資資料、早上補上美股收盤），
@@ -50,6 +50,10 @@ def save(D, res, stocks, dt, sectors=None, recs=None):
                # 隔天走勢型態的預測（只記有把握的）
                "sh": sorted({(r["c"], r["sh"]["k"]) for sd in ("long", "short") for r in (dt or {}).get(sd, []) if r.get("sh")})},
     }
+    if risk:
+        # 大跌風險：一週內跌 4% 以上、下個交易日跌 2% 以上的機率與等級（早上會加上隔夜美股再更新一次）
+        obj["risk"] = {"w5": risk["w5"]["p"], "d1": risk["d1"]["p"], "lv": risk.get("level"),
+                       "ov": bool(risk["d1"].get("ov"))}
     write_json(path, obj, gz=True)
 
 
@@ -116,11 +120,20 @@ def evaluate(D, A_all):
     recrows = {"buy": [], "sell": []}
     shrows = []
     rarows = {hn: {"buy": [], "sell": [], "wbuy": [], "wsell": []} for hn in H}
+    riskrows = []
     for d in files:
         t0 = pos.get(d)
         if t0 is None:
             continue
         P = read_json(os.path.join(LOG_DIR, d + ".json.gz"), {}) or {}
+        rk = P.get("risk")
+        if rk and t0 + 1 <= last and not isnan(tx[t0]) and tx[t0]:
+            nx = tx[t0 + 1] / tx[t0] - 1 if not isnan(tx[t0 + 1]) else None
+            mn = None
+            if t0 + 5 <= last:
+                mn = min(tx[t0 + k] for k in range(1, 6) if not isnan(tx[t0 + k])) / tx[t0] - 1
+            riskrows.append({"d": d, "w5": rk.get("w5"), "d1": rk.get("d1"), "lv": rk.get("lv"),
+                             "next": nx, "min5": mn})
         for hn, h in H.items():
             if t0 + h > last:
                 continue
@@ -232,6 +245,13 @@ def evaluate(D, A_all):
                                    "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
                                    "today_n": len(td),
                                    "today": round(sum(1 for r in td if good(r["ex"])) / len(td), 4) if td else None}
+    # 大跌風險的前瞻實測：當天存下的等級 vs 之後真的有沒有大跌
+    out["risk"] = {"rows": [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in r.items()} for r in riskrows[-40:]]}
+    for lv in ("低", "正常", "偏高", "高"):
+        a1 = [r for r in riskrows if r["lv"] == lv and r["next"] is not None]
+        a5 = [r for r in riskrows if r["lv"] == lv and r["min5"] is not None]
+        out["risk"][lv] = {"n1": len(a1), "d1": round(sum(1 for r in a1 if r["next"] <= -0.02) / len(a1), 4) if a1 else None,
+                           "n5": len(a5), "w5": round(sum(1 for r in a5 if r["min5"] <= -0.04) / len(a5), 4) if a5 else None}
     out["dt"]["shape"] = {"n": len(shrows), "hit": round(sum(shrows) / len(shrows), 4) if shrows else None}
     for side in ("long", "short"):
         rs = dtrows[side]
