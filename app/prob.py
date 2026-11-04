@@ -21,7 +21,7 @@ REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
 import os
-# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60），預設不開
+# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、fip、fipraw），預設不開
 EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
@@ -121,6 +121,26 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
                     z = np.where((nn >= 40) & (sd > 0), mu / np.where(sd > 0, sd, 1) * np.sqrt(np.maximum(nn, 1)), 0.0)
                 cols.append(np.clip(np.nan_to_num(z), -3, 3) / 2.0)
             else:
+                cols.append(np.zeros(N))
+        for key in ("fip", "fipraw"):
+            # 「溫水煮青蛙」連續性（Da, Gurun & Warachka 2014）：近 60 天的漲跌若是由很多天小幅、同方向的變動累積而成，
+            # 之後比較會延續；由少數幾天大漲大跌造成的則否。訊號＝方向 × 連續程度（不連續時為 0），預期越高越好。
+            # fip 用「比加權指數」的每日超額報酬（目標是跑贏加權指數）；fipraw 用原始報酬（文獻原版）。
+            if key in EXTRA and t >= 60:
+                seg = ra[:, t - 60:t]
+                if key == "fip":
+                    seg = seg - rt[t - 60:t][None, :]
+                with np.errstate(all="ignore"):
+                    okk = ~np.isnan(seg)
+                    nn = okk.sum(1)
+                    pr = np.nansum(seg, 1)
+                    pos = np.where(okk, seg > 0, False).sum(1) / np.maximum(nn, 1)
+                    neg = np.where(okk, seg < 0, False).sum(1) / np.maximum(nn, 1)
+                    sg = np.sign(pr)
+                    cont = np.maximum(0.0, sg * (pos - neg))
+                    fv = np.where(nn >= 40, sg * cont, 0.0)
+                cols.append(np.clip(np.nan_to_num(fv) * 5.0, -2, 2))
+            elif key in EXTRA:
                 cols.append(np.zeros(N))
         for key, lb in (("ind60", 60), ("ind20", 20)):
             # 產業動能：同產業（成交夠的股票）近 lb 天平均漲跌 − 加權指數；文獻：Moskowitz & Grinblatt 1999，預期越高越好
