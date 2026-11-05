@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """研究用：抓國內外情勢的長期歷史資料（國際行情、地緣政治風險、經濟政策不確定、景氣燈號、鉅亨政經新聞），存 probe 分支。"""
-import json, os, time, urllib.request, ssl, gzip, datetime as dt
+import json, os, sys, time, urllib.request, ssl, gzip, datetime as dt
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 ctx = ssl.create_default_context()
 OUT = "probe_files"
@@ -57,7 +57,7 @@ news = []
 t0 = int(dt.datetime(2019, 1, 1).timestamp())
 now = int(time.time())
 errs = 0
-for cat in ("tw_macro", "wd_macro"):
+for cat in (() if "nonews" in sys.argv else ("tw_macro", "wd_macro")):
     t = t0
     while t < now and errs < 50:
         e = min(now, t + 7 * 86400)
