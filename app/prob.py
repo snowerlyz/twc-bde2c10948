@@ -21,7 +21,7 @@ REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
 import os
-# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、fip、fipraw），預設不開
+# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、fip、fipraw、pavg5），預設不開
 EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
@@ -167,6 +167,11 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
             idx = np.fromiter(p.keys(), dtype=np.int64)
             pc = np.fromiter(p.values(), dtype=np.float64)
             X = np.c_[pc - 0.5, ext[t][idx]]
+            if "pavg5" in EXTRA:
+                # 分數排名的 5 天平均（含今天）：每天的分數有雜訊，連續幾天都排前面的比較可信；預期越高越好
+                us = [u for u in range(t - 4, t + 1) if u in ph]
+                pa = np.array([np.mean([ph[u].get(i, 0.5) for u in us]) for i in idx.tolist()])
+                X = np.c_[X, pa - 0.5]
             liq = V[idx, t] >= min_val
             if t + h <= last and not np.isnan(tx[t]) and not np.isnan(tx[t + h]):
                 with np.errstate(all="ignore"):
