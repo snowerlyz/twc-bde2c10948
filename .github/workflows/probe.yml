@@ -1,5 +1,10 @@
 name: 連線測試
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: '要執行的測試程式'
+        default: tools/probe.py
 permissions:
   contents: write
 jobs:
@@ -10,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python tools/probe.py
+      - run: python ${{ inputs.script || 'tools/probe.py' }}
       - name: 存結果到 probe 分支
         if: always()
         run: |
