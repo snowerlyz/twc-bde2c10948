@@ -48,7 +48,7 @@ def build(out):
     idx = os.path.join(out, "index.html")
     with open(idx, encoding="utf-8") as f:
         html = f.read()
-    html = html.replace("<head>", '<head>\n<meta name="robots" content="noindex,nofollow,noarchive">', 1)
+    html = html.replace("<head>", '<head>\n<meta name="robots" content="noindex,nofollow,noarchive">\n<script>window.TWC_STATIC=1</script>', 1)
     with open(idx, "w", encoding="utf-8") as f:
         f.write(html)
     open(os.path.join(out, ".nojekyll"), "w").close()

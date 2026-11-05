@@ -1826,7 +1826,18 @@ const ROSE = `<svg class="rose" viewBox="0 0 200 200" aria-hidden="true">
   <g fill="var(--ink)" font-family="var(--font)" font-weight="700" font-size="14" text-anchor="middle"><text x="100" y="30">北</text><text x="174" y="105">東</text><text x="100" y="182">南</text><text x="26" y="105">西</text></g>
   <g class="needle2"><path d="M100 36 L109 100 L100 108 L91 100Z" fill="var(--brass)"/><path d="M100 164 L109 100 L100 92 L91 100Z" fill="var(--muted)"/></g>
   <circle cx="100" cy="100" r="7" fill="var(--surface-solid)" stroke="var(--brass)" stroke-width="2"/></svg>`;
+// 雲端網站（GitHub Pages）：由 build_site 在 index.html 標記；不靠 api/status 判斷，連線失敗時才不會誤顯示電腦版的訊息
+const IS_STATIC = !!window.TWC_STATIC;
+function renderOffline() {
+  view.innerHTML = `<div class="card empty" style="max-width:560px;margin:36px auto">
+    <h2>暫時讀不到今天的資料</h2>
+    <p style="max-width:46ch;margin:0 auto">可能是手機網路不穩，或網站正在更新（每天下午與早上各更新幾次，每次約 1 分鐘）。網路恢復後會自動重新載入。</p>
+    <button class="btn primary" id="retrybtn" style="margin-top:16px">${svgI("refresh")}重新載入</button></div>`;
+  const b = $("#retrybtn");
+  if (b) b.addEventListener("click", () => location.reload());
+}
 function renderOnboarding() {
+  if (IS_STATIC) { renderOffline(); return; }
   const st = S.status || {};
   const pct = st.total ? Math.min(100, Math.round(st.done / st.total * 100)) : 0;
   const order = ["collect", "snapshot", "engine", "backfill"];
@@ -1887,8 +1898,12 @@ async function pollStatus(force) {
     }
     pollT = setTimeout(() => pollStatus("silent"), st.static ? 600000 : running ? 4000 : 60000);
   } catch (e) {
-    $("#datainfo").innerHTML = '<span class="small" style="color:var(--up)">連不到台股羅盤程式，請確認黑色視窗還開著</span>';
-    pollT = setTimeout(() => pollStatus("silent"), 8000);
+    $("#datainfo").innerHTML = IS_STATIC ? '<span class="small" style="color:var(--up)">網路連線不穩，稍後自動重試</span>'
+      : '<span class="small" style="color:var(--up)">連不到台股羅盤程式，請確認黑色視窗還開著</span>';
+    pollT = setTimeout(async () => {
+      if (!S.latest) { await loadLatest(true); if (S.latest) { renderTicker(); route(); } }
+      pollStatus("silent");
+    }, 8000);
   }
 }
 function toggleTheme() {
