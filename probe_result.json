@@ -1,0 +1,26 @@
+{
+ "^VIX": 6754,
+ "^TNX": 6746,
+ "^IRX": 6746,
+ "DX-Y.NYB": 6781,
+ "TWD=X": 5455,
+ "CL=F": 6579,
+ "GC=F": 6571,
+ "HG=F": 6575,
+ "^SOX": 6752,
+ "^GSPC": 6752,
+ "TSM": 6752,
+ "^TWII": 6579,
+ "^N225": 6572,
+ "^KS11": 6608,
+ "^HSI": 6613,
+ "gpr_daily.xls": 3276288,
+ "gpr_monthly.xls": 2718208,
+ "epu_daily.csv": 250751,
+ "ndc.zip": 71404,
+ "fred_epu.csv": "The read operation timed out",
+ "cnyes_err": [
+  "wd_macro 1594080000 HTTP Error 502: Bad Gateway"
+ ],
+ "news": 43761
+}
