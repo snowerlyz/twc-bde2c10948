@@ -20,7 +20,7 @@ try {
     $gp = Join-Path $env:TEMP 'twc-get-pip.py'
     Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $gp -UseBasicParsing
     & $py $gp --no-warn-script-location -q
-    & $py -m pip install --no-warn-script-location -q numpy lightgbm
+    & $py -m pip install --no-warn-script-location -q numpy lightgbm pandas xlrd
     & $py -c "import numpy, lightgbm; print('ok')"
     if ($LASTEXITCODE -eq 0) { Write-Host '完成。' } else { Write-Host '安裝未完成，先只用加權分數。' }
 } catch {

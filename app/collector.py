@@ -708,6 +708,10 @@ def run_collect(prog, total_days=250, chip_days=120, quick_days=70, on_stage=Non
         except Exception as e:
             log("加權指數長期歷史：%s" % e)
         try:
+            extra.collect_situ()
+        except Exception as e:
+            log("國內外情勢資料：%s" % e)
+        try:
             extra.collect_tdcc()
         except Exception as e:
             log("集保股權分散表：%s" % e)

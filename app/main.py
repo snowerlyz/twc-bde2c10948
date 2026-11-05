@@ -167,6 +167,15 @@ def analyze(prog=None):
                 r["be"] = beta[r["c"]]
     except Exception as e:
         log("大跌風險失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 國內外情勢與今日盤勢一句話（開盤前依隔夜美股與大跌風險）
+    try:
+        import situ as _si
+        importlib.reload(_si)
+        si = _si.build(D, risk_out)
+        write_json(os.path.join(RESULTS, "situ.json"), si)
+        write_json(os.path.join(DB, "brief.json"), si.get("brief") or {})
+    except Exception as e:
+        log("國內外情勢失敗：%s\n%s" % (e, traceback.format_exc()))
     # 前瞻實測：存下今天的預測，並替以前存的預測對答案
     try:
         import predlog as _pl

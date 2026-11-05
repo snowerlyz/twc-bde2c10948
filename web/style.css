@@ -753,3 +753,16 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--
 .riskcard .rkdo { margin: 10px 0 0; }
 .rktbl { margin: 8px 0; max-width: 420px; }
 .rktbl tr.on td { background: var(--surface-3); }
+
+/* 今日盤勢一句話、國內外情勢 */
+.briefcard .brief1 { font-size: 1.08rem; line-height: 1.7; margin: 4px 0 0; font-weight: 600; }
+.briefcard.rk2 { border-color: color-mix(in srgb, var(--brass) 40%, transparent); }
+.briefcard.rk0 { border-color: color-mix(in srgb, #3fae7a 40%, transparent); }
+.situcard .silist { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.situcard .si1 { padding: 10px 12px; border: 1px solid var(--line, rgba(127,127,127,.2)); border-radius: 10px; }
+.situcard .sih { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.situcard .siv { margin: 4px 0 2px; }
+.situcard .situt { margin: 6px 0; }
+.situcard .situt summary { cursor: pointer; }
+.situcard .news { margin: 6px 0 0; padding-left: 18px; }
+.situcard .news li { margin: 4px 0; }

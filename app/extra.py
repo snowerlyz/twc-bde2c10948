@@ -78,8 +78,9 @@ def _clean(s):
 def fetch_cnyes(days=4, max_pages=8):
     cutoff = time.time() - days * 86400
     items = []
-    for cat in ("tw_stock", "headline"):
-        for page in range(1, max_pages + 1):
+    # tw_macro＝台灣政經、wd_macro＝國際政經（給「國內外情勢」用）
+    for cat in ("tw_stock", "headline", "tw_macro", "wd_macro"):
+        for page in range(1, (max_pages if cat in ("tw_stock", "headline") else 3) + 1):
             try:
                 j = fetch_json("https://api.cnyes.com/media/api/v1/newslist/category/%s?limit=50&page=%d" % (cat, page), retries=2)
             except Exception as e:
@@ -283,6 +284,105 @@ def collect_global():
 
 
 TWII_LONG_PATH = os.path.join(DB, "twii_long.json")
+SITU_PATH = os.path.join(DB, "situ_src.json")
+GPR_DAILY = "https://www.matteoiacoviello.com/gpr_files/data_gpr_daily_recent.xls"
+GPR_MONTHLY = "https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls"
+EPU_DAILY = "https://www.policyuncertainty.com/media/All_Daily_Policy_Data.csv"
+NDC_ZIP = ("https://ws.ndc.gov.tw/Download.ashx?u=LzAwMS9hZG1pbmlzdHJhdG9yLzEwL3JlbGZpbGUvNTc4MS82MzkyL2VhMjM1YmQ5LWQwNTItNGE2OS1hYmZjLWQ1Yzc4NWQzZDBlMi56aXA%3d"
+           "&n=5pmv5rCj5oyH5qiZ5Y%2bK54eI6JmfLnppcA%3d%3d&icon=.zip")
+
+
+def _yahoo_long(sym):
+    j = fetch_json("https://query2.finance.yahoo.com/v8/finance/chart/%s?period1=946684800&period2=%d&interval=1d"
+                   % (sym.replace("^", "%5E"), int(time.time())), retries=2)
+    r = j["chart"]["result"][0]
+    off = r["meta"].get("gmtoffset") or 0
+    reg = ((r["meta"].get("currentTradingPeriod") or {}).get("regular") or {})
+    still_open = time.time() < (reg.get("end") or 0)
+    live_day = dt.datetime.utcfromtimestamp((reg.get("start") or 0) + off).strftime("%Y%m%d") if reg.get("start") else None
+    out = {}
+    for ts, c in zip(r["timestamp"], r["indicators"]["quote"][0]["close"]):
+        if c is None:
+            continue
+        d = dt.datetime.utcfromtimestamp(ts + off).strftime("%Y%m%d")
+        if still_open and d == live_day:
+            continue
+        out[d] = round(float(c), 4)
+    return out
+
+
+def collect_situ(force=False):
+    """國內外情勢的資料（每天最多抓一次；抓不到沿用舊資料）：
+    - 地緣政治風險指數（Caldara & Iacoviello，依國際新聞報導計算；每日與各國每月，含台灣）
+    - 美國經濟政策不確定指數（Baker, Bloom & Davis，依新聞報導計算；每日）
+    - 國發會景氣指標與燈號（每月）
+    - 台積電 ADR、費城半導體 2000 年起的每日收盤（驗證「隔夜美股 → 台股當天」用）"""
+    old = read_json(SITU_PATH, {}) or {}
+    today = now_tw().strftime("%Y%m%d")
+    if not force and (old.get("_day") == today):
+        return old
+    out = dict(old)
+    got = []
+    try:
+        import xlrd  # noqa: F401  地緣政治風險指數是 Excel 檔，需要 xlrd
+        import io
+        import pandas as pd
+        b = fetch(GPR_DAILY, raw=True, timeout=120, retries=2)
+        g = pd.read_excel(io.BytesIO(b), engine="xlrd")
+        out["gpr"] = {str(int(d)): round(float(v), 2) for d, v in zip(g["DAY"], g["GPRD"]) if v == v and str(int(d)) >= "20000101"}
+        b = fetch(GPR_MONTHLY, raw=True, timeout=120, retries=2)
+        g = pd.read_excel(io.BytesIO(b), engine="xlrd")
+        out["gpr_twn"] = {str(m)[:7].replace("-", ""): round(float(v), 4) for m, v in zip(g["month"], g["GPRC_TWN"])
+                          if v == v and str(m)[:4] >= "2000"}
+        got.append("地緣政治風險")
+    except Exception as e:
+        log("地緣政治風險指數：%s（沿用舊資料）" % e)
+    try:
+        import csv
+        t = fetch(EPU_DAILY, timeout=120, retries=2)
+        ep = {}
+        for r in csv.DictReader(t.splitlines()):
+            if int(r["year"]) >= 2000 and r.get("daily_policy_index"):
+                ep["%04d%02d%02d" % (int(r["year"]), int(r["month"]), int(r["day"]))] = round(float(r["daily_policy_index"]), 1)
+        if ep:
+            out["epu"] = ep
+            got.append("政策不確定")
+    except Exception as e:
+        log("經濟政策不確定指數：%s（沿用舊資料）" % e)
+    try:
+        import csv
+        import io
+        import zipfile
+        b = fetch(NDC_ZIP, raw=True, timeout=120, retries=2)
+        z = zipfile.ZipFile(io.BytesIO(b))
+        name = next(n for n in z.namelist() if n.endswith("景氣指標與燈號.csv") and not n.startswith("schema"))
+        nd = {}
+        for r in csv.DictReader(io.TextIOWrapper(z.open(name), encoding="utf-8-sig")):
+            sc = r.get("景氣對策信號綜合分數")
+            if sc and sc.strip() not in ("-", ""):
+                nd[r["Date"]] = [float(sc), (r.get("景氣對策信號") or "").strip(), round(float(r.get("領先指標不含趨勢指數") or 0), 2)]
+        if nd:
+            out["ndc"] = nd
+            got.append("景氣燈號")
+    except Exception as e:
+        log("國發會景氣燈號：%s（沿用舊資料）" % e)
+    us = dict(old.get("us_long") or {})
+    for sym in ("TSM", "^SOX"):
+        try:
+            x = _yahoo_long(sym)
+            if len(x) > 3000:
+                us[sym] = x
+        except Exception as e:
+            log("%s 長期歷史：%s（沿用舊資料）" % (sym, e))
+    if us:
+        out["us_long"] = us
+        got.append("美股長期歷史")
+    if got:
+        out["_day"] = today
+        out["_at"] = now_tw().strftime("%Y-%m-%d %H:%M")
+        write_json(SITU_PATH, out)
+    log("國內外情勢資料：%s" % ("、".join(got) or "都沒抓到"))
+    return out
 
 
 def collect_twii_long():

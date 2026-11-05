@@ -90,6 +90,8 @@ const GLOSS = {
   foi: "外資在台指期押多還是押空的淨口數。正數＝押漲，負數＝押跌；最近的變化方向比數字大小更重要。",
   pc: "選擇權裡「賭跌」的部位 ÷「賭漲」的部位。在台灣，這個比值偏高時，常被解讀為下方支撐較強。",
   dtscore: "當沖分數：依今天收盤後的資料，估計下一個交易日「開盤買、收盤賣」能賺錢的機會。",
+  brief: "今日盤勢：開盤前的一句話預測與建議。方向來自隔夜美股（台積電 ADR 與費城半導體的平均漲跌）：2005 年起每天只用當時已知的資料估計台股當天收紅的機率，實測猜對約 6 成多，比一律猜漲準。再加上大跌風險等級，依事先定好的規則給建議。下午收盤後美股還沒開，所以只會先顯示風險，早上 7:35 左右才更新方向。這是統計參考，不是投資建議。",
+  situ: "國內外情勢：國際（美股恐慌指數、美債利率、美元、油價、費城半導體、依國際新聞計算的地緣政治風險與美國經濟政策不確定指數）、國內（國發會景氣燈號、新台幣、台灣的地緣政治風險）與政治經濟新聞的主題熱度。每一項和過去一年（新聞指數是三年）比較，偏高或偏低時依常理標示偏有利或偏不利。2005 年以來的檢驗顯示這些情勢對之後大盤漲跌的預測力很弱，所以只用來了解背景，不拿來猜方向。",
   risk: "大跌風險：估計加權指數「5 個交易日內最低收盤比今天低 4% 以上」與「下個交易日跌 2% 以上」的機率。依據是加權指數 2000 年以來的每日收盤：近一個月波動、波動是否突然變大、離近 3 個月高點多遠、離季線多遠、最近幾天的漲跌；早上 7:35 美股收盤後，再加上隔夜的台積電 ADR 與費城半導體。每天只用當時已知的資料重新估計（walk-forward）。等級是今天的機率在過去二十年中的位置：後 50% 低、50%～75% 正常、75%～90% 偏高、前 10% 高。這是在估「風險有多大」，不是預測「會不會跌」：高風險的日子隔天平均漲跌接近 0，只是上下震盪變大；突然的消息（例如國際突發事件）在發生前通常看不出來。",
   mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
   paperpos: "未實現損益＝現在用現價賣掉、扣掉手續費和證交稅之後，比買進成本（含買進手續費）多或少多少。停損／停利：成交價碰到你設定的價格，就自動以當下的買一價送出賣單（之後一樣要排隊才成交）。",
@@ -632,8 +634,9 @@ async function vHome(tok) {
   try { picks = (await api("warrant_picks")).picks.slice(0, 5); } catch { }
   try { RC = await api("recs"); } catch { }
   try { RP = await api("report"); } catch { }
-  let MD = null, LV = null;
+  let MD = null, LV = null, SI = null;
   try { MD = await api("model"); } catch { }
+  try { SI = await api("situ"); } catch { }
   try { LV = await api("live"); } catch { }
   if (tok !== routeToken) return;
   const rated = L.stocks.filter((r) => r.ra && !r.etf);
@@ -642,6 +645,7 @@ async function vHome(tok) {
   view.innerHTML = `
   <h1 class="grad">今天的評價</h1>
   <p class="lead">依 ${dayFull(L.day)} 收盤資料，替每檔股票打分：建議買、相對看好、中立、相對看淡、建議賣。準確度沒達標時不硬喊「建議」。</p>
+  ${briefCard(SI)}
   ${riskCard(M.risk, LV)}
   ${guideCard(RC, cnt)}
   <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
@@ -655,6 +659,7 @@ async function vHome(tok) {
     <ul class="note legend"><li>${rTag("B")}<span>過去照做多半跑贏大盤</span></li><li>${rTag("b")}<span>比大多數股票好，但還沒達標</span></li><li>${rTag("S")}<span>過去照做多半跑輸大盤</span></li><li>${rTag("s")}<span>比大多數股票差，但還沒達標</span></li><li><span>點股票可以看理由與準確度</span></li></ul>
     <div class="list" id="hlist"></div></section>
   ${mktCard(L, MD)}
+  ${situCard(SI)}
   <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
   <section class="card hero glow"><span class="glow-ring"></span>
     <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div>${mh.rel != null ? `<a class="relnote" href="#/check">可信度 <span class="pill ${relInfo(mh.rel).c}">${relInfo(mh.rel).t}</span></a>${help("rel")}` : ""}</div>
@@ -1597,6 +1602,42 @@ function endDay(day, n) {
   const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8));
   d.setDate(d.getDate() + Math.round(n * 7 / 5));
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+// 今日盤勢一句話（開盤前依隔夜美股與大跌風險）；依據與實測收在可展開區塊
+function briefCard(SI) {
+  const B = SI && SI.brief;
+  if (!B || !B.sentence) return "";
+  const P = (v) => v == null ? "—" : Math.round(v * 100) + "%";
+  const ov = SI.overnight, st = SI.ov_stat || {}, A = st.all, Y = st.y2, nr = ov && ov.near;
+  const tone = B.level === "高" || B.level === "偏高" ? "rk2" : (B.p_up != null && B.p_up >= 0.55 ? "rk0" : B.p_up != null && B.p_up <= 0.45 ? "rk2" : "rk1");
+  const lv = B.live || {};
+  return `<section class="card section briefcard ${tone}"><div class="card-h"><h2>${svgI("fut")} 今日盤勢</h2>${B.target ? `<span class="note">${B.target.slice(4, 6)}/${B.target.slice(6)} 開盤前・${esc(B.at.slice(5))} 更新</span>` : ""}${help("brief")}</div>
+    <p class="brief1">${esc(B.sentence)}</p>
+    ${B.ctx ? `<p class="note" style="margin:4px 0 0">${esc(B.ctx)}（說明背景，見下方「國內外情勢」）</p>` : ""}
+    <details class="fold"><summary class="note">依據與準不準</summary>
+      ${nr ? `<p class="note" style="margin:6px 0 0">過去隔夜美股和這次最相近的 ${nr.n} 天，台股當天 ${P(nr.up)} 收紅，中間值 ${(nr.med * 100).toFixed(1)}%（6 成落在 ${(nr.lo * 100).toFixed(1)}%～${(nr.hi * 100).toFixed(1)}%）。</p>` : `<p class="note" style="margin:6px 0 0">美股還沒收盤，方向要等早上 7:35 左右更新；目前只有大跌風險。</p>`}
+      ${A ? `<p class="note">實測（${st.from.slice(0, 4)} 年起，每天只用當時已知的資料）：用隔夜台積電 ADR 與費城半導體猜台股當天收紅或收黑，猜對 ${P(A.hit)}（一律猜漲 ${P(A.up)}）；機率離 50% 較遠（≥65% 或 ≤35%）的 ${A.strong_n} 天猜對 ${P(A.strong_hit)}。${Y ? `最近兩年猜對 ${P(Y.hit)}（一律猜漲 ${P(Y.up)}）。` : ""}</p>` : ""}
+      ${lv.n ? `<p class="note">前瞻實測（開盤前事先存下的預測）：${lv.n} 天猜對 ${P(lv.hit)}。</p>` : `<p class="note">前瞻實測：從 2026/11/6 開始，每天開盤前存下預測、收盤後對答案。</p>`}
+      <p class="note">建議的規則是事先定好的：大跌風險「高」→ 減碼、不追高；「偏高」→ 不加碼、設停損；其他時候看收紅機率提醒追價或分批。只看隔夜美股與台股本身的統計，盤中突發消息看不出來。</p>
+    </details></section>`;
+}
+// 國內外情勢：國際、國內指標與政經新聞主題（說明背景；實測對方向的預測力很弱）
+const SITU_TONE = { "偏不利": "rsw", "偏有利": "rbw", "中性": "rn" };
+function situCard(SI) {
+  if (!SI || !((SI.intl || []).length || (SI.dom || []).length || SI.news)) return "";
+  const row = (x) => `<li class="si1"><div class="sih"><b>${esc(x.name)}</b><span class="rt ${SITU_TONE[x.tone] || "rn"}">${esc(x.tone)}</span></div><div class="siv">${esc(x.v)}</div><div class="note">${esc(x.note)}</div></li>`;
+  const N = SI.news, T = (N && N.topics) || [];
+  const heatTone = { "升溫": "rsw", "降溫": "rn", "持平": "rn", "資料累積中": "rn" };
+  const topic = (t) => `<details class="fold situt"><summary><b>${esc(t.name)}</b> <span class="note">近 3 天 ${t.n} 則${t.base != null ? `（平常每天 ${t.base} 則）` : ""}</span> <span class="rt ${heatTone[t.heat]}">${esc(t.heat)}</span> <span class="note">${esc(t.tone)}</span></summary>
+    ${t.top.length ? `<ul class="news">${t.top.map((n) => `<li><a href="${esc(n.url || "#")}" target="_blank" rel="noopener">${esc(n.t)}</a> <span class="note">${esc(n.src || "")}</span></li>`).join("")}</ul>` : '<p class="note">最近 3 天沒有相關新聞。</p>'}</details>`;
+  const hot = T.filter((t) => t.heat === "升溫").map((t) => t.name);
+  return `<section class="card section situcard"><div class="card-h"><h2>${svgI("globe")} 國內外情勢</h2>${help("situ")}</div>
+    <p>${esc(SI.summary)}${hot.length ? `新聞升溫：${esc(hot.join("、"))}。` : ""}</p>
+    <details class="fold"><summary class="note">國際（${(SI.intl || []).length} 項）</summary><ul class="silist">${(SI.intl || []).map(row).join("")}</ul></details>
+    <details class="fold"><summary class="note">國內（${(SI.dom || []).length} 項）</summary><ul class="silist">${(SI.dom || []).map(row).join("")}</ul></details>
+    ${T.length ? `<details class="fold"><summary class="note">政治與經濟新聞（${T.length} 個主題，最近 3 天 ${N.n} 則）</summary>${T.map(topic).join("")}<p class="note">新聞來源：鉅亨網台灣政經、國際政經、頭條與 Yahoo 股市；依關鍵字分主題，偏多偏空用標題的用詞判斷，只是大略的參考。</p></details>` : ""}
+    <details class="fold"><summary class="note">這些情勢能不能預測大盤？</summary><p class="note" style="margin:6px 0 0">${esc(SI.verdict)}</p></details>
+  </section>`;
 }
 // 大跌風險（加權指數）：等級、機率、怎麼應對；細節收在可展開區塊
 const RISK_TONE = { "低": "rk0", "正常": "rk1", "偏高": "rk2", "高": "rk3" };
