@@ -21,7 +21,7 @@ REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
 import os
-# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、fip、fipraw、pavg5），預設不開
+# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、fip、fipraw、pavg5、hi52），預設不開
 EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
@@ -141,6 +141,17 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
                     fv = np.where(nn >= 40, sg * cont, 0.0)
                 cols.append(np.clip(np.nan_to_num(fv) * 5.0, -2, 2))
             elif key in EXTRA:
+                cols.append(np.zeros(N))
+        if "hi52" in EXTRA:
+            # 離一年高點的距離（George & Hwang 2004「52 週高點動能」）：收盤價越接近過去一年最高價，之後越容易延續；
+            # 預期越高越好。訊號＝今天收盤 ÷ 過去 250 天最高收盤 − 1（0 ＝ 正在創一年新高）。
+            if t >= 120:
+                seg = A[:, max(0, t - 250):t + 1]
+                with np.errstate(all="ignore"):
+                    hi = np.where(np.isnan(seg), -np.inf, seg).max(axis=1)
+                    d52 = np.where(np.isfinite(hi) & (hi > 0), A[:, t] / np.where(hi > 0, hi, 1) - 1, np.nan)
+                cols.append(np.clip(np.nan_to_num(d52, nan=-0.3), -0.8, 0) * 3.0 + 0.9)
+            else:
                 cols.append(np.zeros(N))
         for key, lb in (("ind60", 60), ("ind20", 20)):
             # 產業動能：同產業（成交夠的股票）近 lb 天平均漲跌 − 加權指數；文獻：Moskowitz & Grinblatt 1999，預期越高越好
