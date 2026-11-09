@@ -261,6 +261,19 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
                 "%s%d" % (sd, round((1 - c) * 100)): [
                     round(sum(st[(False, sd, c)][u][0] for u in ks) / max(1, sum(st[(False, sd, c)][u][1] for u in ks)), 4)
                     for ks in (known, [u for u in known if u in k60])] for sd in ("buy", "sell") for c in CUTS}
+            nd = os.environ.get("TWC_REC_DEBUG_NEW")      # 研究用：只看某天之後才揭曉的新樣本（樣本外重驗）
+            if nd and nd in D.days:
+                t_new = D.days.index(nd)
+                kn = [u for u in known if u + h > t_new]
+
+                def _r(dd, ks):
+                    n = sum(dd[u][1] for u in ks if u in dd)
+                    return [round(sum(dd[u][0] for u in ks if u in dd) / n, 4) if n else None, n]
+                out.setdefault("_new", {})[hn] = dict(
+                    {"%s%d" % (sd, round((1 - c) * 100)): _r(st[(False, sd, c)], kn) for sd in ("buy", "sell") for c in CUTS},
+                    days=len(kn), wf_buy=_r({t: wf["buy"][t][2:4] for t in wf["buy"]}, kn),
+                    wf_sell=_r({t: wf["sell"][t][2:4] for t in wf["sell"]}, kn),
+                    wr_buy=_r(wr["buy"], kn), wr_sell=_r(wr["sell"], kn))
         tun[hn] = {"cut": {sd: label[sd]["c"] for sd in label}, "kind": {sd: label[sd]["kind"] for sd in label}}
         timing = _timing(D, A_all, rank_of, sorted(ph), h, last, v20s)
         # ---- 今天每檔股票
