@@ -21,7 +21,7 @@ REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
 import os
-# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、fip、fipraw、pavg5、hi52），預設不開
+# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、rrev20、fip、fipraw、pavg5、hi52），預設不開
 EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
@@ -119,6 +119,23 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
                     mu = np.nansum(res_, 1) / np.maximum(nn, 1)
                     sd = np.sqrt(np.nansum((res_ - mu[:, None]) ** 2, 1) / np.maximum(nn - 1, 1))
                     z = np.where((nn >= 40) & (sd > 0), mu / np.where(sd > 0, sd, 1) * np.sqrt(np.maximum(nn, 1)), 0.0)
+                cols.append(np.clip(np.nan_to_num(z), -3, 3) / 2.0)
+            else:
+                cols.append(np.zeros(N))
+        if "rrev20" in EXTRA:
+            # 殘差短期反轉：近 20 天扣掉和加權指數連動（beta）後的累積超額報酬 ÷ 殘差波動；
+            # 文獻：Blitz, Huij, Lansdorp & Verbeek 2013（殘差反轉比原始報酬反轉穩定），預期越高越差
+            if t >= 20:
+                seg = ra[:, t - 20:t]
+                ms = rt[t - 20:t]
+                with np.errstate(all="ignore"):
+                    okk = ~np.isnan(seg) & ~np.isnan(ms)[None, :]
+                    bb = np.nan_to_num(beta, nan=1.0)
+                    res_ = np.where(okk, seg - bb[:, None] * ms[None, :], np.nan)
+                    nn = okk.sum(1)
+                    mu = np.nansum(res_, 1) / np.maximum(nn, 1)
+                    sd = np.sqrt(np.nansum((res_ - mu[:, None]) ** 2, 1) / np.maximum(nn - 1, 1))
+                    z = np.where((nn >= 15) & (sd > 0), mu / np.where(sd > 0, sd, 1) * np.sqrt(np.maximum(nn, 1)), 0.0)
                 cols.append(np.clip(np.nan_to_num(z), -3, 3) / 2.0)
             else:
                 cols.append(np.zeros(N))
