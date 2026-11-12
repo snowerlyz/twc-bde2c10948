@@ -28,6 +28,7 @@ CUT_MIN_N = 100          # 某種嚴格度在 60 天內至少要有這麼多檔�
 WATCH_MIN_CUT = 0.90     # 「相對看好／看淡」只在前（後）10% 以內挑
 RANK_LIQ = os.environ.get("TWC_RANK_LIQ") == "1"   # 研究開關：只在成交足夠的股票之間排名
 WATCH_LIQ = os.environ.get("TWC_WATCH_LIQ", "0") == "1"   # 相對模式改用「成交足夠的股票之間」的排名決定檔數
+RANK_GRP = os.environ.get("TWC_RANK_GRP") == "1"   # 研究開關：成交足夠的股票依近 20 天成交金額分大（前 10%）／中（10～40%）／小三組，各組內排名
 
 
 def isnan(x):
@@ -114,6 +115,16 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             """第 u 天的排序依據：有機率就用機率的排名，沒有就用綜合分數的排名。
             liq＝只在成交足夠（會給評價）的股票之間排名，成交太少的放中間（反正一律中立）。"""
             pb = pbh.get(u) or ph[u]
+            if RANK_GRP and pbh.get(u):
+                lq = sorted((i for i in pb if v20s[i][u] >= MIN_VAL), key=lambda i: -v20s[i][u])
+                n = len(lq)
+                grp = {i: (0 if j < 0.1 * n else 1 if j < 0.4 * n else 2) for j, i in enumerate(lq)}
+                rk = {i: 0.5 for i in pb}
+                for g in (0, 1, 2):
+                    order = sorted((i for i in grp if grp[i] == g), key=lambda i: pb[i])
+                    m = len(order)
+                    rk.update({i: (j + 1) / m for j, i in enumerate(order)})
+                return rk
             if liq or (RANK_LIQ and pbh.get(u)):
                 # 只在成交足夠（會給評價）的股票之間排名；成交太少的放中間（反正一律中立）
                 order = sorted((i for i in pb if v20s[i][u] >= MIN_VAL), key=lambda i: pb[i])
