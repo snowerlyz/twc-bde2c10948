@@ -21,7 +21,7 @@ REFIT = 10
 SHRINK = {"short": 0.7, "mid": 0.7, "long": 0.5}
 NBIN = 10
 import os
-# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、rrev20、fip、fipraw、pavg5、hi52），預設不開
+# 研究開關：額外條件（逗號列出 ivol、max、ind60、ind20、rmom、rmom60、rrev20、rear、fip、fipraw、pavg5、hi52），預設不開
 EXTRA = set(x for x in os.environ.get("TWC_PB_EXTRA", "").split(",") if x)
 
 
@@ -31,6 +31,22 @@ def available():
         return True
     except Exception:
         return False
+
+
+def _rev_window(days, t):
+    """第 t 天已經結束的最近一個「月營收公布期間」：回傳 (期間開始前一天的索引, 期間最後一天的索引)。
+    公布期間＝每月 1～10 日；第 t 天是 11 日以後才算當月期間已結束（和 finhist._rev_avail_ym 一致）。"""
+    d = days[t]
+    y, m = int(d[:4]), int(d[4:6])
+    if int(d[6:8]) < 11:
+        m -= 1
+        if m <= 0:
+            y, m = y - 1, 12
+    lo, hi = "%04d%02d01" % (y, m), "%04d%02d10" % (y, m)
+    ids = [u for u in range(max(0, t - 45), t + 1) if lo <= days[u] <= hi]
+    if not ids or ids[0] == 0 or ids[-1] >= t:
+        return None
+    return ids[0] - 1, ids[-1]
 
 
 def _irls(X, y, l2=1.0, it=25):
@@ -168,6 +184,19 @@ def build(D, A_all, pct_hist, v20, min_val, say=None):
                     hi = np.where(np.isnan(seg), -np.inf, seg).max(axis=1)
                     d52 = np.where(np.isfinite(hi) & (hi > 0), A[:, t] / np.where(hi > 0, hi, 1) - 1, np.nan)
                 cols.append(np.clip(np.nan_to_num(d52, nan=-0.3), -0.8, 0) * 3.0 + 0.9)
+            else:
+                cols.append(np.zeros(N))
+        if "rear" in EXTRA:
+            # 月營收公布期間的股價反應：台股每月 1～10 日公布上個月營收，11 日起才算「已知」；
+            # 訊號＝最近一個已結束的公布期間（每月 1～10 日）比加權指數多漲多少（對數）。
+            # 文獻：Chan, Jegadeesh & Lakonishok 1996、Brandt 等 2008（公布期間的反應之後會延續），預期越高越好。
+            # 公司各自的公布日沒有收錄，所以用整個 1～10 日當作公布期間。
+            win = _rev_window(D.days, t)
+            if win:
+                a0, a1 = win
+                with np.errstate(all="ignore"):
+                    er = np.log(A[:, a1] / A[:, a0]) - np.log(tx[a1] / tx[a0])
+                cols.append(np.clip(np.nan_to_num(er), -0.3, 0.3) * 5.0)
             else:
                 cols.append(np.zeros(N))
         for key, lb in (("ind60", 60), ("ind20", 20)):
