@@ -766,3 +766,7 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--
 .situcard .situt summary { cursor: pointer; }
 .situcard .news { margin: 6px 0 0; padding-left: 18px; }
 .situcard .news li { margin: 4px 0; }
+
+/* 機器人模擬下單 */
+.kv .rbn { display: block; font-size: 12px; color: var(--muted); font-style: normal; margin-top: 2px; }
+.kv .rbn span { display: inline; font-size: inherit; }

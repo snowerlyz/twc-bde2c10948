@@ -184,6 +184,13 @@ def analyze(prog=None):
         write_json(os.path.join(RESULTS, "live.json"), live if live is not None else _pl.evaluate(D, A_all))
     except Exception as e:
         log("前瞻實測失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 機器人模擬下單（當沖、短線各 100 萬；依評分自動下單，下一個交易日用開盤／收盤價撮合）
+    try:
+        import robot as _rb
+        importlib.reload(_rb)
+        _rb.run(D, res, stocks, dt, recs)
+    except Exception as e:
+        log("機器人模擬下單失敗：%s\n%s" % (e, traceback.format_exc()))
     by_code = {r["c"]: r for r in stocks}
     mkt = res["market"]
 

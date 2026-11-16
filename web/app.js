@@ -130,6 +130,7 @@ const ICON = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 14.5h2"/><path d="M6 6l9-3 1 3"/>',
+  robot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 17h5"/><circle cx="12" cy="3.5" r="1"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
   news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2V5Z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 16h4"/>',
@@ -144,7 +145,7 @@ const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor
 
 const NAV = [
   ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
-  ["#/paper", "模擬交易", "wallet"],
+  ["#/robot", "機器人模擬", "robot"], ["#/paper", "模擬交易", "wallet"],
   null,
   ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
   ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
@@ -602,6 +603,7 @@ async function route() {
     else if (page === "sector") await vSector(tok, decodeURIComponent(arg));
     else if (page === "global") await vGlobal(tok);
     else if (page === "menu") vMenu();
+    else if (page === "robot") await vRobot(tok);
     else if (page === "paper") await vPaper(tok, decodeURIComponent(arg || ""));
     else if (page === "help") await vHelp(tok);
     else await vHome(tok);
@@ -2267,4 +2269,87 @@ function renderClosed(v) {
       <td>${c.kind === "當沖回補" ? `賣 ${fmtPx(c.cost)}` : fmtPx(c.cost)}</td><td>${c.kind === "當沖回補" ? `買回 ${fmtPx(c.px)}` : fmtPx(c.px)}</td><td>${money(c.fee + c.tax)}<br><span class="muted small">稅 ${money(c.tax)}</span></td>
       <td>${smoney(c.pnl)}</td><td>${c.ret != null ? `<span class="${cls(c.ret)}">${(c.ret * 100).toFixed(2)}%</span>` : ""}</td><td>${c.days} 天</td><td>${PTAG[c.tag] || ""}</td></tr>`).join("")}
     </tbody></table></div>` : '<p class="note" style="padding:0 22px 16px">還沒有賣出結算的交易。</p>'}`;
+}
+
+// ====================================================================== 機器人模擬下單（雲端版、電腦版都可看）
+let rbAcct = store.get("rbAcct", "dt"), rbAll = false;
+const RB_NAME = { dt: "當沖帳戶", st: "短線帳戶" };
+function rbChart(box, eq) {
+  if (!box) return;
+  if (!eq || eq.length < 2) { box.innerHTML = '<p class="note">從第一個交易日收盤後開始畫：這裡會有每天收盤的總資產，和同期間加權指數的漲跌比較。</p>'; return; }
+  const t0 = eq.find((x) => x[2]) || eq[0];
+  const a = eq.map((x) => x[1] / eq[0][1] - 1), b = eq.map((x) => x[2] && t0[2] ? x[2] / t0[2] - 1 : null);
+  const W = Math.max(240, box.clientWidth), H = 150, PR = 44, PB = 18, pw = W - PR;
+  const vals = a.concat(b.filter((v) => v != null)), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals) || 0.01;
+  const x = (i) => i / (eq.length - 1) * pw, y = (v) => 6 + (hi - v) / (hi - lo || 1) * (H - PB - 6);
+  const line = (arr, col, dash) => `<polyline fill="none" stroke="${col}" stroke-width="2" ${dash ? 'stroke-dasharray="4 3"' : ""} points="${arr.map((v, i) => v == null ? "" : `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>`;
+  const pc = (v) => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="總資產走勢"><g class="axis grid"><line x1="0" x2="${pw}" y1="${y(0)}" y2="${y(0)}"/>
+    <text x="${W - 2}" y="${y(hi) + 8}" text-anchor="end">${pc(hi)}</text><text x="${W - 2}" y="${y(lo)}" text-anchor="end">${pc(lo)}</text>
+    <text x="0" y="${H - 3}">${dayStr(eq[0][0])}</text><text x="${pw}" y="${H - 3}" text-anchor="end">${dayStr(eq[eq.length - 1][0])}</text></g>
+    ${line(b, "var(--muted)", true)}${line(a, "var(--brass)")}</svg>
+    <p class="note" style="margin:4px 0 0"><span style="color:var(--brass)">━</span> 這個帳戶　<span style="color:var(--muted)">┅</span> 加權指數（同期間）</p>`;
+}
+async function vRobot(tok) {
+  const R = await api("robot", { fresh: true }).catch(() => null);
+  if (tok !== routeToken) return;
+  if (!R) { view.innerHTML = `<h1 class="grad">機器人模擬下單</h1><div class="card empty"><h2>準備中</h2><p>下次收盤後資料更新時，兩個模擬帳戶就會開戶並送出第一批委託。</p></div>`; return; }
+  const pc = (x, d = 2) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(d)}%</span>`;
+  const dt = (s) => s ? esc(s.slice(5).replace("-", "/")) : "—";
+  const tm = R.st_timing ? R.st_timing.split("_") : ["open", "close"];
+  const KT = { open: "開盤價", close: "收盤價" };
+  view.innerHTML = `<h1 class="grad">機器人模擬下單</h1>
+  <p class="lead">兩個各 <b>100 萬元</b>的模擬帳戶，完全照程式的評分<b>自動</b>挑股票、決定時機、下單，不動到真的錢。從 ${dayFull(R.start)} 開始，每個交易日收盤後結算一次。</p>
+  <div class="section filters"><div class="seg" id="rbtab"><button data-a="dt">當沖帳戶</button><button data-a="st">短線帳戶</button></div></div>
+  <div id="rbbody"></div>
+  <details class="card more-info section"><summary>機器人怎麼下單</summary>
+    <ul>
+      <li><b>當沖帳戶：</b>每天收盤後看「當沖」頁，只挑標示「推薦」的股票（過去條件相近的股票扣掉成本後，賺錢的機會超過一半、平均是賺的），依勝算由高到低最多 5 檔，每檔約總資產的 1/5。下一個交易日<b>開盤價買進（或先賣）、收盤價賣出（或買回）</b>——這正是當沖模型預測的時段。沒有推薦的股票就整天空手。</li>
+      <li><b>短線帳戶：</b>每天收盤後依短線評價挑最多 5 檔還沒持有的（建議買優先，其次相對看好；同一級依跑贏大盤機率排序），每檔約總資產的 1/25，所以大約有 5 批輪流持有。買賣時機依「買賣時機」的實測結果自動選（目前是 <b>${KT[tm[0]]}買進、第 5 個交易日${KT[tm[1]]}賣出</b>）。持有中的股票短線評價變成「建議賣」，下一個交易日開盤提早賣出。</li>
+      <li><b>公平：</b>委託在收盤後決定、存檔，隔天開盤後就不再更改；如果雲端更新延遲到開盤後（收盤價委託是 13:00 後）才產生委託，就算沒來得及下單，不會用事後的資料補單。</li>
+      <li><b>成交：</b>只用每天的開盤價、收盤價（集合競價）撮合。開盤或收盤就漲停買不到、跌停賣不掉；先賣後買時開盤在平盤以下不先賣。以「股」為單位（不足一張以零股計），不融資、不融券。</li>
+      <li><b>費用：</b>手續費 0.1425% × 6 折（每筆最低 20 元）、證交稅 一般 0.3%、ETF 0.1%、當沖 0.15%，都已扣在損益裡。</li>
+    </ul></details>
+  <p class="disclaimer">這是依過去統計自動操作的模擬成績，不是投資建議；真實下單會有滑價、排隊買不到、零股成交量少等差異，實際結果可能更差。</p>`;
+  const draw = () => {
+    $$("#rbtab button").forEach((b) => b.classList.toggle("on", b.dataset.a === rbAcct));
+    const A = R.acct[rbAcct], s = A.stats, isDt = rbAcct === "dt";
+    const side = (o) => o.act || (o.side === "B" ? "買進" : (isDt ? "先賣" : "賣出"));
+    const sp = (t) => `<span class="pill ${/買/.test(t) ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">${esc(t)}</span>`;
+    const stk = (c, n) => `<a href="#/stock/${c}"><b>${esc(n)}</b></a><br><span class="muted small">${esc(c)}</span>`;
+    const pend = A.pending.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>動作</th><th style="text-align:left">價格與時刻</th><th>預定金額</th><th>決定時間</th><th style="text-align:left">為什麼</th></tr></thead><tbody>
+      ${A.pending.map((o) => `<tr><td>${stk(o.c, o.n)}</td><td>${sp(o.side === "B" ? "買進" : (isDt ? "先賣" : "賣出"))}</td><td class="txt">${esc(o.plan || "")}</td><td>${o.amt ? money(o.amt) : o.qty ? o.qty.toLocaleString() + " 股" : "—"}</td><td>${dt(o.made)}</td><td class="txt">${esc(o.why || "")}</td></tr>`).join("")}</tbody></table></div>`
+      : R.plan_note ? `<p class="note" style="padding:0 18px 14px">${esc(R.plan_note)}；下次收盤後會照常下單。</p>` : `<p class="note" style="padding:0 18px 14px">${isDt ? "下一個交易日沒有「推薦」的當沖股票，機器人整天空手（不做沒把握的交易）。" : "下一個交易日沒有新的買進委託。"}</p>`;
+    const pos = !isDt ? (A.pos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>股數</th><th>買進價</th><th>現價</th><th>未實現損益</th><th>買進時刻</th><th>預計賣出</th></tr></thead><tbody>
+      ${A.pos.map((p) => `<tr><td>${stk(p.c, p.n)}</td><td>${p.qty.toLocaleString()}</td><td>${fmtPx(p.px)}</td><td>${fmtPx(p.last)}</td><td>${smoney(p.upnl)}<br>${pc(p.uret)}</td><td>${dt(p.at)}</td><td>${p.early ? '<span class="down">下個交易日開盤提早賣</span>' : p.left > 0 ? `再 ${p.left} 個交易日・${esc(p.exit)}` : `下個交易日・${esc(p.exit)}`}</td></tr>`).join("")}</tbody></table></div>`
+      : '<p class="note" style="padding:0 18px 14px">目前沒有持股。</p>') : "";
+    const TR = rbAll ? A.trades : A.trades.slice(0, 10);
+    const trades = A.trades.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>方向</th><th>進場</th><th>出場</th><th>股數</th><th>損益（扣費用）</th><th style="text-align:left">理由</th></tr></thead><tbody>
+      ${TR.map((t) => `<tr><td>${stk(t.c, t.n)}</td><td>${esc(t.dir)}</td><td>${dt(t.in_at)}<br>${fmtPx(t.in_px)}</td><td>${dt(t.out_at)}<br>${fmtPx(t.out_px)}</td><td>${t.qty.toLocaleString()}</td><td>${smoney(t.pnl)}<br>${pc(t.ret)}</td><td class="txt">${esc(t.why || "")}${t.exit_why ? `<br><span class="muted small">${esc(t.exit_why)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>${A.trades.length > TR.length ? `<p style="padding:10px 18px"><button class="btn sm" id="rbmore">顯示全部 ${A.trades.length} 筆</button></p>` : ""}`
+      : '<p class="note" style="padding:0 18px 14px">還沒有完成的交易。</p>';
+    const orders = A.orders.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>動作</th><th>決定時間</th><th>成交時刻</th><th>成交價</th><th>股數</th><th>手續費＋稅</th><th style="text-align:left">結果</th></tr></thead><tbody>
+      ${A.orders.map((o) => `<tr><td>${stk(o.c, o.n)}</td><td>${sp(side(o))}</td><td>${dt(o.made)}</td><td>${o.at ? dt(o.at) : dayStr(o.fill_day)}</td><td>${o.px != null ? fmtPx(o.px) : "—"}</td><td>${o.qty ? o.qty.toLocaleString() : "—"}</td><td>${o.px != null ? money((o.fee || 0) + (o.tax || 0)) : "—"}</td><td class="txt">${o.st === "成交" ? "成交" : `<span class="muted">${esc(o.st)}</span>`}</td></tr>`).join("")}</tbody></table></div>`
+      : '<p class="note" style="padding:0 18px 14px">還沒有委託紀錄。</p>';
+    const vs = s.bench != null ? s.ret - s.bench : null;
+    $("#rbbody").innerHTML = `<section class="card section">
+      <div class="card-h"><h2>${RB_NAME[rbAcct]}</h2><span class="note">結算到 ${dayFull(R.day)}・共 ${s.days} 個交易日</span></div>
+      <div class="kv">
+        <div><span>總資產</span><b>${money(s.equity)}</b><em class="rbn">${smoney(s.equity - A.init)}（${pc(s.ret)}）</em></div>
+        <div><span>同期間加權指數</span><b>${pc(s.bench)}</b><em class="rbn">${vs == null ? "" : `機器人${vs >= 0 ? "多賺" : "少賺"} ${Math.abs(vs * 100).toFixed(2)} 個百分點`}</em></div>
+        <div><span>完成交易</span><b>${s.n} 筆</b><em class="rbn">${s.win == null ? "—" : `賺錢 ${pctTxt(s.win)}・平均每筆 ${pc(s.avg)}`}</em></div>
+        <div><span>最大回落</span><b>${pc(s.mdd)}</b><em class="rbn">從最高點最多跌掉多少</em></div>
+        <div><span>手續費＋稅</span><b>${money(s.fees + s.taxes)}</b><em class="rbn">${isDt ? `有交易的日子 ${s.act_days} 天` : `現金 ${money(s.cash)}`}</em></div>
+      </div>
+      <div id="rbchart" style="margin-top:12px"></div></section>
+    <section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>下一個交易日的委託</h3><span class="note">${R.plan_day ? `依 ${dayFull(R.plan_day)} 收盤資料，開盤後不再更改` : ""}</span></div>${pend}</section>
+    ${isDt ? "" : `<section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>目前庫存</h3><span class="note">${A.pos.length} 檔・市值 ${money(A.pos.reduce((a, p) => a + p.mv, 0))}</span></div>${pos}</section>`}
+    <details class="card flush section" open><summary style="padding:14px 18px"><b>交易紀錄</b>（共 ${A.trades.length} 筆，最新在上）</summary>${trades}</details>
+    <details class="card flush section"><summary style="padding:14px 18px"><b>委託紀錄</b>（每一筆委託的決定時間、成交時刻與結果）</summary>${orders}</details>`;
+    rbChart($("#rbchart"), A.eq);
+    const mb = $("#rbmore"); if (mb) mb.onclick = () => { rbAll = true; draw(); };
+  };
+  rbAll = false;
+  $$("#rbtab button").forEach((b) => b.onclick = () => { rbAll = false; rbAcct = b.dataset.a; store.set("rbAcct", rbAcct); draw(); });
+  draw();
+  onResize(() => location.hash === "#/robot" && rbChart($("#rbchart"), R.acct[rbAcct].eq));
 }
