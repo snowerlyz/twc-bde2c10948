@@ -18,18 +18,23 @@ while len(days) < NDAY:
     if d.weekday() < 5:
         days.append(d.strftime("%Y%m%d"))
     d += dt_.timedelta(days=1)
-codes = ["%04d" % (1101 + i) for i in range(20)]
+codes = ["%04d" % (1101 + i) for i in range(40)]
 raw = {}
 for c in codes:
-    px, o, cl, ref = 50.0, [], [], []
+    px, o, cl, ref, hi, lo = 50.0, [], [], [], [], []
     for t in range(NDAY):
         ref.append(px)
         op = px * (1 + random.uniform(-0.02, 0.02))
         px = op * (1 + random.uniform(-0.03, 0.03))
         o.append(round(op, 2))
         cl.append(round(px, 2))
-    raw[c] = {"o": o, "c": cl, "ref": ref}
+        hi.append(round(max(op, px) * (1 + random.uniform(0, 0.02)), 2))
+        lo.append(round(min(op, px) * (1 - random.uniform(0, 0.02)), 2))
+    raw[c] = {"o": o, "c": cl, "ref": ref, "h": hi, "l": lo}
 raw["1101"]["o"][5] = round(raw["1101"]["ref"][5] * 1.1, 2)     # 第 5 天開盤漲停
+for c in codes[:24]:                                                  # 第 9 天一半股票收盤漲停（短線主單買不到 → 改買備選）
+    raw[c]["c"][8] = round(raw[c]["ref"][8] * 1.1, 2)
+    raw[c]["h"][8] = max(raw[c]["h"][8], raw[c]["c"][8])
 
 
 class FD:
@@ -48,8 +53,8 @@ def signals(T):
     rnd = random.Random(T)
     pk = rnd.sample(codes, 8)
     dt = {"long": [{"c": c, "n": "股" + c, "ok": True, "score": 60 - j, "win": 0.6, "avg": 0.002, "why": ["測試"]} for j, c in enumerate(pk[:3])],
-          "short": [{"c": c, "n": "股" + c, "ok": j == 0, "score": 55, "win": 0.55, "avg": 0.001} for j, c in enumerate(pk[3:5])]}
-    stocks = [{"c": c, "n": "股" + c, "ra": ("b" if c in pk[:6] else ("S" if c == pk[7] else "N")) + "NN"} for c in codes]
+          "short": [{"c": c, "n": "股" + c, "ok": True, "score": 56 - j, "win": 0.55, "avg": 0.001} for j, c in enumerate(pk[3:8])]}
+    stocks = [{"c": c, "n": "股" + c, "ra": ("S" if c == pk[7] else ("b" if c in pk[:6] or int(c) % 2 == 0 else "N")) + "NN"} for c in codes]
     res = {"_recs": {c: {"hs": {"short": {"pb": rnd.random()}}} for c in codes}}
     recs = {"h": {"short": {"timing": {"best": "close_open"}}}}
     return dt, stocks, res, recs
@@ -80,6 +85,22 @@ for T in range(1, NDAY + 1):
             print("重跑結果不同", day)
             ok = False
 
+# 當沖：每天成交（不含買回）最多 5 檔；備選只有在主單開盤沒成交時才會用到
+import json  # noqa: E402
+stt = json.load(open(robot.PATH))
+from collections import Counter  # noqa: E402
+ins = Counter(tr["in_day"] for tr in stt["acct"]["dt"]["trades"])
+if ins and max(ins.values()) > robot.DT_MAX:
+    print("當沖一天成交超過上限", ins)
+    ok = False
+roles = Counter(tr.get("role") for tr in stt["acct"]["dt"]["trades"])
+print("當沖成交（主單／備選）：", dict(roles))
+if not roles.get("backup"):
+    print("測試資料應該要有用到備選的情況")
+    ok = False
+if not any(o.get("act") == "備選買進" for o in stt["acct"]["st"]["orders"]):
+    print("短線：主單漲停時應改買備選")
+    ok = False
 for k in ("dt", "st"):
     a = out["acct"][k]
     s = a["stats"]

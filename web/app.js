@@ -2304,10 +2304,11 @@ async function vRobot(tok) {
   <div id="rbbody"></div>
   <details class="card more-info section"><summary>機器人怎麼下單</summary>
     <ul>
-      <li><b>當沖帳戶：</b>每天收盤後看「當沖」頁，只挑標示「推薦」的股票（過去條件相近的股票扣掉成本後，賺錢的機會超過一半、平均是賺的），依勝算由高到低最多 5 檔，每檔約總資產的 1/5。下一個交易日<b>開盤價買進（或先賣）、收盤價賣出（或買回）</b>——這正是當沖模型預測的時段。沒有推薦的股票就整天空手。</li>
+      <li><b>當沖帳戶：</b>每天收盤後看「當沖」頁，只挑標示「推薦」的股票（過去條件相近的股票扣掉成本後，賺錢的機會超過一半、平均是賺的），依勝算排序：前 5 檔是<b>主單</b>（每檔約總資產的 1/5），後面最多 5 檔是<b>備選</b>。一律收盤價出場（賣出或買回）。沒有推薦的股票就整天空手。</li>
+      <li><b>開盤前先預估、開盤後再調整：</b>開盤前只知道昨天的資料，所以先排好主單和備選。主單「先買」用開盤價買（開盤就漲停就放棄）；「先賣」掛平盤價——開在平盤以上就用開盤價成交，開低就繼續掛著，盤中漲回平盤以上才成交。開盤後看到開盤價，主單有幾檔沒成交，就依序改下幾檔備選：備選買進限開盤價（盤中跌破開盤價才成交）、先賣限開盤價且不低於平盤（盤中漲過才成交）。短線帳戶也有備選：主單在下單時刻漲停買不到，就改買下一檔。</li>
       <li><b>短線帳戶：</b>每天收盤後依短線評價挑最多 5 檔還沒持有的（建議買優先，其次相對看好；同一級依跑贏大盤機率排序），每檔約總資產的 1/25，所以大約有 5 批輪流持有。買賣時機依「買賣時機」的實測結果自動選（目前是 <b>${KT[tm[0]]}買進、第 5 個交易日${KT[tm[1]]}賣出</b>）。持有中的股票短線評價變成「建議賣」，下一個交易日開盤提早賣出。</li>
-      <li><b>公平：</b>委託在收盤後決定、存檔，隔天開盤後就不再更改；如果雲端更新延遲到開盤後（收盤價委託是 13:00 後）才產生委託，就算沒來得及下單，不會用事後的資料補單。</li>
-      <li><b>成交：</b>只用每天的開盤價、收盤價（集合競價）撮合。開盤或收盤就漲停買不到、跌停賣不掉；先賣後買時開盤在平盤以下不先賣。以「股」為單位（不足一張以零股計），不融資、不融券。</li>
+      <li><b>公平：</b>委託（含備選和開盤後怎麼換的規則）在收盤後決定、存檔，隔天開盤後就不再更改；如果雲端更新延遲到開盤後（收盤價委託是 13:00 後）才產生委託，就算沒來得及下單，不會用事後的資料補單。</li>
+      <li><b>成交：</b>開盤價、收盤價用集合競價的價格撮合；盤中的限價單只看當天最高、最低價，價格要「超過」限價才算成交（等於有排隊），成交價就是限價。開盤或收盤就漲停買不到、跌停賣不掉；先賣一律不低於平盤價。以「股」為單位（不足一張以零股計），不融資、不融券。</li>
       <li><b>費用：</b>手續費 0.1425% × 6 折（每筆最低 20 元）、證交稅 一般 0.3%、ETF 0.1%、當沖 0.15%，都已扣在損益裡。</li>
     </ul></details>
   <p class="disclaimer">這是依過去統計自動操作的模擬成績，不是投資建議；真實下單會有滑價、排隊買不到、零股成交量少等差異，實際結果可能更差。</p>`;
@@ -2318,7 +2319,7 @@ async function vRobot(tok) {
     const sp = (t) => `<span class="pill ${/買/.test(t) ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">${esc(t)}</span>`;
     const stk = (c, n) => `<a href="#/stock/${c}"><b>${esc(n)}</b></a><br><span class="muted small">${esc(c)}</span>`;
     const pend = A.pending.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>動作</th><th style="text-align:left">價格與時刻</th><th>預定金額</th><th>決定時間</th><th style="text-align:left">為什麼</th></tr></thead><tbody>
-      ${A.pending.map((o) => `<tr><td>${stk(o.c, o.n)}</td><td>${sp(o.side === "B" ? "買進" : (isDt ? "先賣" : "賣出"))}</td><td class="txt">${esc(o.plan || "")}</td><td>${o.amt ? money(o.amt) : o.qty ? o.qty.toLocaleString() + " 股" : "—"}</td><td>${dt(o.made)}</td><td class="txt">${esc(o.why || "")}</td></tr>`).join("")}</tbody></table></div>`
+      ${A.pending.map((o) => `<tr${o.role === "backup" ? ' class="muted"' : ""}><td>${stk(o.c, o.n)}</td><td>${sp(o.side === "B" ? "買進" : (isDt ? "先賣" : "賣出"))}${o.role ? `<br><span class="muted small">${o.role === "backup" ? "備選" : "主單"}</span>` : ""}</td><td class="txt">${esc(o.plan || "")}</td><td>${o.amt ? money(o.amt) : o.qty ? o.qty.toLocaleString() + " 股" : "—"}</td><td>${dt(o.made)}</td><td class="txt">${esc(o.why || "")}</td></tr>`).join("")}</tbody></table></div>`
       : R.plan_note ? `<p class="note" style="padding:0 18px 14px">${esc(R.plan_note)}；下次收盤後會照常下單。</p>` : `<p class="note" style="padding:0 18px 14px">${isDt ? "下一個交易日沒有「推薦」的當沖股票，機器人整天空手（不做沒把握的交易）。" : "下一個交易日沒有新的買進委託。"}</p>`;
     const pos = !isDt ? (A.pos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>股數</th><th>買進價</th><th>現價</th><th>未實現損益</th><th>買進時刻</th><th>預計賣出</th></tr></thead><tbody>
       ${A.pos.map((p) => `<tr><td>${stk(p.c, p.n)}</td><td>${p.qty.toLocaleString()}</td><td>${fmtPx(p.px)}</td><td>${fmtPx(p.last)}</td><td>${smoney(p.upnl)}<br>${pc(p.uret)}</td><td>${dt(p.at)}</td><td>${p.early ? '<span class="down">下個交易日開盤提早賣</span>' : p.left > 0 ? `再 ${p.left} 個交易日・${esc(p.exit)}` : `下個交易日・${esc(p.exit)}`}</td></tr>`).join("")}</tbody></table></div>`
@@ -2341,7 +2342,7 @@ async function vRobot(tok) {
         <div><span>手續費＋稅</span><b>${money(s.fees + s.taxes)}</b><em class="rbn">${isDt ? `有交易的日子 ${s.act_days} 天` : `現金 ${money(s.cash)}`}</em></div>
       </div>
       <div id="rbchart" style="margin-top:12px"></div></section>
-    <section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>下一個交易日的委託</h3><span class="note">${R.plan_day ? `依 ${dayFull(R.plan_day)} 收盤資料，開盤後不再更改` : ""}</span></div>${pend}</section>
+    <section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>下一個交易日的委託</h3><span class="note">${R.plan_day ? `依 ${dayFull(R.plan_day)} 收盤資料排好，開盤後只依事先寫好的規則換成備選` : ""}</span></div>${pend}</section>
     ${isDt ? "" : `<section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>目前庫存</h3><span class="note">${A.pos.length} 檔・市值 ${money(A.pos.reduce((a, p) => a + p.mv, 0))}</span></div>${pos}</section>`}
     <details class="card flush section" open><summary style="padding:14px 18px"><b>交易紀錄</b>（共 ${A.trades.length} 筆，最新在上）</summary>${trades}</details>
     <details class="card flush section"><summary style="padding:14px 18px"><b>委託紀錄</b>（每一筆委託的決定時間、成交時刻與結果）</summary>${orders}</details>`;
