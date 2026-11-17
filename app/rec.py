@@ -28,6 +28,7 @@ CUT_MIN_N = 100          # 某種嚴格度在 60 天內至少要有這麼多檔�
 WATCH_MIN_CUT = 0.90     # 「相對看好／看淡」只在前（後）10% 以內挑
 RANK_LIQ = os.environ.get("TWC_RANK_LIQ") == "1"   # 研究開關：只在成交足夠的股票之間排名
 WATCH_LIQ = os.environ.get("TWC_WATCH_LIQ", "0") == "1"   # 相對模式改用「成交足夠的股票之間」的排名決定檔數
+GATE_NOETF = os.environ.get("TWC_GATE_NOETF") == "1"   # 研究開關：把關與顯示的準確度只算會列出評價的股票（排除 ETF），挑嚴格度不變
 RANK_GRP = os.environ.get("TWC_RANK_GRP") == "1"   # 研究開關：成交足夠的股票依近 20 天成交金額分大（前 10%）／中（10～40%）／小三組，各組內排名
 
 
@@ -105,6 +106,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
         log("跑贏大盤機率模型失敗：%s\n%s" % (e, traceback.format_exc()))
         PB = None
     per_stock = {}
+    etf_i = {D.idx[r["c"]] for r in stocks if r.get("etf") and r.get("c") in D.idx}
     for hn, h in H.items():
         ph = pct_hist.get(hn) or {}
         if not ph:
@@ -153,7 +155,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
                     if isnan(a0) or isnan(a1) or a0 <= 0:
                         continue
                     r = a1 / a0 - 1
-                    rows.append((p, r, r - bm))
+                    rows.append((p, r, r - bm, i in etf_i))
                 if len(rows) >= 200:
                     data[L][u] = rows
         if not WATCH_LIQ:
@@ -171,7 +173,9 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
                     for u in known:
                         xs = pick(data[L].get(u, []), sd, c)
                         good = sum(1 for x in xs if (x[2] > 0 if sd == "buy" else x[2] < 0))
-                        dd[u] = (good, len(xs), sum(x[2] for x in xs), sum(1 for x in xs if x[1] > 0))
+                        xn = [x for x in xs if not x[3]]
+                        gn = sum(1 for x in xn if (x[2] > 0 if sd == "buy" else x[2] < 0))
+                        dd[u] = (good, len(xs), sum(x[2] for x in xs), sum(1 for x in xs if x[1] > 0), gn, len(xn))
                     st[(L, sd, c)] = dd
 
         def trail(t, sd, L=False):
@@ -212,10 +216,11 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             rec_days = [t for t in ok_days if t in set(known[-ACC_DAYS:])]
 
             def agg(ts):
-                w = sum(wf[sd][t][2] for t in ts)
-                n = sum(wf[sd][t][3] for t in ts)
-                return (w / n if n else None), n, (sum(wf[sd][t][4] for t in ts) / n if n else None), \
-                    (sum(wf[sd][t][5] for t in ts) / n if n else None)
+                w = sum(wf[sd][t][6 if GATE_NOETF else 2] for t in ts)
+                n = sum(wf[sd][t][7 if GATE_NOETF else 3] for t in ts)
+                na = sum(wf[sd][t][3] for t in ts)
+                return (w / n if n else None), n, (sum(wf[sd][t][4] for t in ts) / na if na else None), \
+                    (sum(wf[sd][t][5] for t in ts) / na if na else None)
             r_all, n_all, ex_all, up_all = agg(ok_days)
             r_60, n_60, _, _ = agg(rec_days)
             lx = lv.get(sd) or {}
@@ -256,8 +261,9 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
                         "status": _status(rate) if kind == "ok" or off else ("相對" if kind == "watch" else "資料不足"),
                         "off": off, "mode": {"ok": "建議", "watch": "相對"}.get(kind),
                         "cut": c, "trail": None if c is None or c not in acc else round(acc[c], 4),
-                        "today": round(td[2] / td[3], 4) if td and td[3] and td[0] == "ok" else None,
-                        "today_n": td[3] if td and td[0] == "ok" else 0,
+                        "today": (round(td[6] / td[7], 4) if td and td[7] and td[0] == "ok" else None) if GATE_NOETF else
+                                 (round(td[2] / td[3], 4) if td and td[3] and td[0] == "ok" else None),
+                        "today_n": (td[7] if GATE_NOETF else td[3]) if td and td[0] == "ok" else 0,
                         "w_all": _wr(wr_all), "w_60": _wr(wr_60),
                         "w_cnt": round(sum(x[1] for x in wr_60) / len(wr_60), 1) if wr_60 else 0, "liq": LW}
             bt["days"] = max(bt["days"], len(ok_days))
@@ -268,6 +274,9 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
             bt[sd + "_ok"] = kind == "ok"
         if os.environ.get("TWC_REC_DEBUG"):      # 研究用：各嚴格度固定使用時的成績（全期、最近 60 天）
             k60 = set(known[-ACC_DAYS:])
+            out.setdefault("_wfser", {})[hn] = {sd: [[t, wf[sd][t][0], wf[sd][t][1], wf[sd][t][2], wf[sd][t][3], wf[sd][t][6], wf[sd][t][7]]
+                                                   for t in known if t in wf[sd]] for sd in ("buy", "sell")}
+            out["_wfser"][hn]["known"] = known
             out.setdefault("_fix", {})[hn] = {
                 "%s%d" % (sd, round((1 - c) * 100)): [
                     round(sum(st[(False, sd, c)][u][0] for u in ks) / max(1, sum(st[(False, sd, c)][u][1] for u in ks)), 4)
