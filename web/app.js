@@ -2299,7 +2299,7 @@ async function vRobot(tok) {
   const tm = R.st_timing ? R.st_timing.split("_") : ["open", "close"];
   const KT = { open: "開盤價", close: "收盤價" };
   view.innerHTML = `<h1 class="grad">機器人模擬下單</h1>
-  <p class="lead">兩個各 <b>100 萬元</b>的模擬帳戶，完全照程式的評分<b>自動</b>挑股票、決定時機、下單，不動到真的錢。從 ${dayFull(R.start)} 開始，每個交易日收盤後結算一次。</p>
+  <p class="lead">兩個各 <b>100 萬元</b>的模擬帳戶，完全照程式的評分<b>自動</b>挑股票、決定時機、下單，不動到真的錢。從 ${dayFull(R.start)} 開始，每個交易日收盤後結算一次；盤中可在下方「今天盤中」看即時試算的買賣情況。</p>
   <div class="section filters"><div class="seg" id="rbtab"><button data-a="dt">當沖帳戶</button><button data-a="st">短線帳戶</button></div></div>
   <div id="rbbody"></div>
   <details class="card more-info section"><summary>機器人怎麼下單</summary>
@@ -2309,6 +2309,7 @@ async function vRobot(tok) {
       <li><b>短線帳戶：</b>每天收盤後依短線評價挑最多 5 檔還沒持有的（建議買優先，其次相對看好；同一級依跑贏大盤機率排序），每檔約總資產的 1/25，所以大約有 5 批輪流持有。買賣時機依「買賣時機」的實測結果自動選（目前是 <b>${KT[tm[0]]}買進、第 5 個交易日${KT[tm[1]]}賣出</b>）。持有中的股票短線評價變成「建議賣」，下一個交易日開盤提早賣出。</li>
       <li><b>公平：</b>委託（含備選和開盤後怎麼換的規則）在收盤後決定、存檔，隔天開盤後就不再更改；如果雲端更新延遲到開盤後（收盤價委託是 13:00 後）才產生委託，就算沒來得及下單，不會用事後的資料補單。</li>
       <li><b>成交：</b>開盤價、收盤價用集合競價的價格撮合；盤中的限價單只看當天最高、最低價，價格要「超過」限價才算成交（等於有排隊），成交價就是限價。開盤或收盤就漲停買不到、跌停賣不掉；先賣一律不低於平盤價。以「股」為單位（不足一張以零股計），不融資、不融券。</li>
+      <li><b>盤中即時觀察：</b>開盤期間用即時行情（證交所，約 1 分鐘更新；雲端版約每 2～5 分鐘更新一次）套用上面同一套規則，試算「到目前為止」哪些委託成交、哪些還在等、帳戶現在值多少；收盤價的委託在 13:30 前用目前價格試算。正式成交與損益仍以收盤後的結算為準。</li>
       <li><b>費用：</b>手續費 0.1425% × 6 折（每筆最低 20 元）、證交稅 一般 0.3%、ETF 0.1%、當沖 0.15%，都已扣在損益裡。</li>
     </ul></details>
   <p class="disclaimer">這是依過去統計自動操作的模擬成績，不是投資建議；真實下單會有滑價、排隊買不到、零股成交量少等差異，實際結果可能更差。</p>`;
@@ -2332,7 +2333,7 @@ async function vRobot(tok) {
       ${A.orders.map((o) => `<tr><td>${stk(o.c, o.n)}</td><td>${sp(side(o))}</td><td>${dt(o.made)}</td><td>${o.at ? dt(o.at) : dayStr(o.fill_day)}</td><td>${o.px != null ? fmtPx(o.px) : "—"}</td><td>${o.qty ? o.qty.toLocaleString() : "—"}</td><td>${o.px != null ? money((o.fee || 0) + (o.tax || 0)) : "—"}</td><td class="txt">${o.st === "成交" ? "成交" : `<span class="muted">${esc(o.st)}</span>`}</td></tr>`).join("")}</tbody></table></div>`
       : '<p class="note" style="padding:0 18px 14px">還沒有委託紀錄。</p>';
     const vs = s.bench != null ? s.ret - s.bench : null;
-    $("#rbbody").innerHTML = `<section class="card section">
+    $("#rbbody").innerHTML = `<div id="rblive"></div><section class="card section">
       <div class="card-h"><h2>${RB_NAME[rbAcct]}</h2><span class="note">結算到 ${dayFull(R.day)}・共 ${s.days} 個交易日</span></div>
       <div class="kv">
         <div><span>總資產</span><b>${money(s.equity)}</b><em class="rbn">${smoney(s.equity - A.init)}（${pc(s.ret)}）</em></div>
@@ -2347,10 +2348,69 @@ async function vRobot(tok) {
     <details class="card flush section" open><summary style="padding:14px 18px"><b>交易紀錄</b>（共 ${A.trades.length} 筆，最新在上）</summary>${trades}</details>
     <details class="card flush section"><summary style="padding:14px 18px"><b>委託紀錄</b>（每一筆委託的決定時間、成交時刻與結果）</summary>${orders}</details>`;
     rbChart($("#rbchart"), A.eq);
+    rbLiveRender();
     const mb = $("#rbmore"); if (mb) mb.onclick = () => { rbAll = true; draw(); };
   };
   rbAll = false;
   $$("#rbtab button").forEach((b) => b.onclick = () => { rbAll = false; rbAcct = b.dataset.a; store.set("rbAcct", rbAcct); draw(); });
   draw();
   onResize(() => location.hash === "#/robot" && rbChart($("#rbchart"), R.acct[rbAcct].eq));
+  rbLiveStart();
+}
+
+// ---- 盤中即時觀察（試算，不是正式成交）：雲端讀 live 分支、電腦版讀 /api/robot_live
+let rbLive = null, rbLiveTimer = null;
+function rbLiveUrl() {
+  const m = location.host.match(/^([^.]+)\.github\.io$/);
+  const owner = m ? m[1] : "snowerlyz", repo = (location.pathname.split("/")[1]) || "twc-bde2c10948";
+  return `https://raw.githubusercontent.com/${owner}/${repo}/live/robot_live.json?t=${Date.now()}`;
+}
+async function rbLiveLoad() {
+  try {
+    if (IS_STATIC) { const r = await fetch(rbLiveUrl(), { cache: "no-store" }); rbLive = r.ok ? await r.json() : null; }
+    else rbLive = await api("robot_live", { fresh: true });
+  } catch { rbLive = null; }
+  rbLiveRender();
+}
+function rbLiveStart() {
+  clearInterval(rbLiveTimer);
+  rbLiveLoad();
+  rbLiveTimer = setInterval(() => {
+    if (!location.hash.startsWith("#/robot")) { clearInterval(rbLiveTimer); return; }
+    if (document.hidden) return;
+    const t = new Date(Date.now() + 8 * 3600e3).toISOString().slice(11, 16);
+    if (t >= "08:45" && t <= "13:50") rbLiveLoad();
+  }, 60000);
+}
+function rbLiveRender() {
+  const box = $("#rblive"); if (!box) return;
+  const L = rbLive, today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10).replace(/-/g, "");
+  if (!L || L.day !== today || !L.acct || ["done", "holiday"].includes(L.phase)) { box.innerHTML = ""; return; }
+  const A = L.acct[rbAcct]; if (!A) { box.innerHTML = ""; return; }
+  const isDt = rbAcct === "dt";
+  const pc = (x) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(2)}%</span>`;
+  const chg = (now, ref) => now && ref ? pc(now / ref - 1) : "";
+  const age = (Date.now() + 8 * 3600e3 - Date.parse(L.gen.replace(" ", "T") + "Z")) / 60000;
+  const late = L.phase === "open" && age > 8;
+  const stk = (c, n) => `<a href="#/stock/${c}"><b>${esc(n)}</b></a><br><span class="muted small">${esc(c)}</span>`;
+  const sp = (t) => `<span class="pill ${/買/.test(t) ? "p-up2" : "p-dn2"}" style="height:20px;min-width:0;font-size:12px">${esc(t)}</span>`;
+  const tpnl = {}; for (const t of A.trades) tpnl[t.c] = t;
+  const stc = (r) => r.k === "done" ? (/成交/.test(r.st) ? `<b class="up">成交</b>${r.at ? `<br><span class="muted small">${esc(r.at.slice(11))}</span>` : ""}` : `<span class="muted">${esc(r.st)}</span>`)
+    : r.k === "wait" ? `<span style="color:var(--brass)">${esc(r.st)}</span>` : `<span class="muted">${esc(r.st)}</span>`;
+  const rows = A.orders.map((r) => `<tr${r.k === "skip" ? ' class="muted"' : ""}><td>${stk(r.c, r.n)}</td><td>${sp(r.act)}${r.role ? `<br><span class="muted small">${r.role === "backup" ? "備選" : "主單"}</span>` : ""}</td>
+    <td class="txt">${stc(r)}</td><td>${r.px != null ? fmtPx(r.px) : "—"}</td><td>${r.now != null ? fmtPx(r.now) : "—"}<br>${chg(r.now, r.ref)}</td>
+    <td>${isDt && tpnl[r.c] && /先賣|先買|買進|備選/.test(r.act) && r.px != null ? smoney(tpnl[r.c].pnl) + "<br>" + pc(tpnl[r.c].ret) : "—"}</td></tr>`).join("");
+  const pos = !isDt && A.pos.length ? `<details class="section"><summary style="padding:8px 18px"><b>庫存現價</b>（${A.pos.length} 檔）</summary><div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>股數</th><th>買進價</th><th>現價（今天漲跌）</th><th>未實現損益</th></tr></thead><tbody>
+    ${A.pos.map((p) => `<tr><td>${stk(p.c, p.n)}${p.new ? '<br><span class="muted small">今天收盤買進（試算）</span>' : ""}</td><td>${p.qty.toLocaleString()}</td><td>${fmtPx(p.px)}</td><td>${fmtPx(p.now)}<br>${chg(p.now, p.ref)}</td><td>${smoney(p.upnl)}<br>${pc(p.uret)}</td></tr>`).join("")}</tbody></table></div></details>` : "";
+  box.innerHTML = `<section class="card flush section" style="border-color:var(--brass)">
+    <div class="card-h" style="padding:14px 18px 6px"><h3>今天盤中（即時試算）</h3><span class="note">${esc(L.phase_txt)}</span></div>
+    <div class="kv" style="padding:0 18px">
+      <div><span>現在總資產（試算）</span><b>${money(A.eq)}</b><em class="rbn">今天 ${smoney(A.pnl)}・累計 ${pc(A.ret)}</em></div>
+      <div><span>加權指數</span><b>${L.taiex ? fmtPx(L.taiex.now) : "—"}</b><em class="rbn">${L.taiex ? `今天 ${pc(L.taiex.chg)}` : ""}</em></div>
+      <div><span>更新時間</span><b>${esc(L.gen.slice(11, 16))}</b><em class="rbn">${late ? '<span class="down">更新延遲中</span>' : esc(L.src || "")}</em></div>
+    </div>
+    ${L.err ? `<p class="note down" style="padding:0 18px">抓不到即時行情：${esc(L.err)}</p>` : ""}
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>動作</th><th style="text-align:left">目前狀態</th><th>成交價</th><th>現價</th><th>試算損益</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${pos}
+    <p class="note" style="padding:6px 18px 14px">用即時行情套用和收盤後結算相同的規則，算出「到目前為止」的情況；收盤價的委託在 13:30 前用目前價格試算。正式成交與損益以收盤後的結算為準（收盤集合競價的價格可能不同）。${IS_STATIC ? "雲端約每 2～5 分鐘更新一次（GitHub 排程偶爾延遲）。" : ""}</p></section>`;
 }

@@ -72,6 +72,36 @@ def paper_init():
     return PAPER, FEED
 
 
+_RL = {"t": 0, "v": None}
+_rl_lock = threading.Lock()
+
+
+def robot_live_view():
+    """機器人盤中即時試算（電腦版）：用模擬交易的即時行情來源，30 秒內重複開啟用同一份。"""
+    with _rl_lock:
+        if _RL["v"] and time.time() - _RL["t"] < 30:
+            return _RL["v"]
+        import robot_live as _rl
+        st = read_json(os.path.join(DATA, "db", "robot.json"), None)
+        if not st:
+            return {"phase": "none"}
+        cs = _rl.codes_of(st)
+        err = None
+        quotes = {}
+        try:
+            _, fd = paper_init()
+            for q in fd.fetch(cs):
+                d = q.get("d")
+                quotes[q["c"]] = {"o": q.get("o"), "h": q.get("h"), "l": q.get("l"), "last": q.get("last"), "ref": q.get("ref"),
+                                  "d": d.replace("-", "").replace("/", "") if isinstance(d, str) else d, "t": q.get("t")}
+            src = fd.src
+        except Exception as e:
+            err, src = str(e), None
+        v = _rl.snapshot(st, quotes, src=src, err=err if not quotes and cs else None)
+        _RL.update(t=time.time(), v=v)
+        return v
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TWCompass/1.0"
 
@@ -173,6 +203,8 @@ class Handler(BaseHTTPRequestHandler):
             pp, fd = paper_init()
             q = fd.quote(m.group(1))
             return self._json({"q": q, "err": fd.err, "now": now_tw().strftime("%Y-%m-%d %H:%M:%S")})
+        if p == "robot_live":
+            return self._json(robot_live_view())
         if p == "latest":
             return self._file_json(os.path.join(RESULTS, "latest.json"))
         if p == "status":

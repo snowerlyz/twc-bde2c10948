@@ -212,7 +212,9 @@ def snapshot(st, quotes, now=None, src=None, err=None, taiex=None):
                 stx = "等開盤（09:00 用開盤價）" if o["kind"] == "open" else "等收盤（13:30 用收盤價）"
             elif o.get("role") == "backup":
                 mains = [r for r in rows if r["role"] == "main" and r["kind"] == "open"]
-                if ph == "open" and k == "dt" and any(r["k"] == "wait" and r["px"] is None for r in mains):
+                if ph == "open" and k == "dt" and any(r["role"] == "backup" for r in rows):
+                    stx = "備選：順位較後，今天用不到"
+                elif ph == "open" and k == "dt" and any(r["k"] == "wait" and r["px"] is None for r in mains):
                     stx = "備選：主單開盤沒成交時依序改下"
                 elif o["kind"] == "close" and ph == "open":
                     stx = "備選：收盤時主單漲停買不到才改買"
