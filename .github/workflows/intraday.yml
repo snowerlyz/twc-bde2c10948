@@ -1,0 +1,47 @@
+name: 機器人盤中即時
+on:
+  schedule:
+    # GitHub 的排程常延遲，所以排好幾次；同一時間只跑一個，13:40 以後啟動的會馬上結束
+    - cron: '50 0 * * 1-5'    # 台灣時間 08:50
+    - cron: '20 1 * * 1-5'    # 09:20（備援）
+    - cron: '0 2 * * 1-5'     # 10:00（備援）
+    - cron: '0 3 * * 1-5'     # 11:00（備援）
+    - cron: '0 4 * * 1-5'     # 12:00（備援）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: twc-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 每 2 分鐘試算一次，結果放到 live 分支（網頁直接讀）
+        env:
+          TWC_DATA: ${{ runner.temp }}/twc
+        run: |
+          git config user.name "twc-bot"; git config user.email "twc-bot@users.noreply.github.com"
+          mkdir -p "$RUNNER_TEMP/live"
+          while true; do
+            hm=$(TZ=Asia/Taipei date +%H%M)
+            [ "$hm" -ge 1345 ] && { echo "已收盤，結束"; break; }
+            git fetch -q origin data:refs/remotes/origin/data -f || true
+            git show origin/data:db/robot.json > "$RUNNER_TEMP/robot.json" || break
+            if python app/robot_live.py "$RUNNER_TEMP/robot.json" "$RUNNER_TEMP/live/robot_live.json"; then
+              blob=$(git hash-object -w "$RUNNER_TEMP/live/robot_live.json")
+              tree=$(printf '100644 blob %s\trobot_live.json\n' "$blob" | git mktree)
+              c=$(git commit-tree "$tree" -m "live $(TZ=Asia/Taipei date +%F_%H:%M)")
+              git push -q -f origin "$c:refs/heads/live" || echo "推送失敗，下次再試"
+              grep -q '"phase":"holiday"\|"phase":"done"' "$RUNNER_TEMP/live/robot_live.json" && { echo "今天沒有開盤或已結算，結束"; break; }
+            fi
+            sleep 120
+          done

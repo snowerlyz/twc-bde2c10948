@@ -405,6 +405,10 @@ def run(D, res, stocks, dt, recs):
     for a in A.values():
         a["orders"] = a["orders"][-KEEP:]
         a["trades"] = a["trades"][-KEEP:]
+    # 盤中即時觀察（robot_live.py）查行情時要知道上市或上櫃
+    mk = getattr(D, "market", None) or {}
+    cs = {o["c"] for a in A.values() for o in a["pending"]} | {p["c"] for a in A.values() for p in a["pos"]}
+    st["mkt"] = {c: ("otc" if mk.get(c) == "上櫃" else "tse") for c in sorted(cs) if mk.get(c)}
     write_json(PATH, st)
     out = summary(st, D)
     write_json(os.path.join(RESULTS, "robot.json"), out)
