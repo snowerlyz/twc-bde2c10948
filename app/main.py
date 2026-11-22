@@ -167,11 +167,19 @@ def analyze(prog=None):
                 r["be"] = beta[r["c"]]
     except Exception as e:
         log("大跌風險失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 大跌之後：剛急跌時，歷史上同級急跌之後怎麼走、各種應對方式的結果
+    crash_out = None
+    try:
+        import crash as _cr
+        importlib.reload(_cr)
+        crash_out = _cr.build(D)
+    except Exception as e:
+        log("大跌之後失敗：%s\n%s" % (e, traceback.format_exc()))
     # 國內外情勢與今日盤勢一句話（開盤前依隔夜美股與大跌風險）
     try:
         import situ as _si
         importlib.reload(_si)
-        si = _si.build(D, risk_out)
+        si = _si.build(D, risk_out, crash_out)
         write_json(os.path.join(RESULTS, "situ.json"), si)
         write_json(os.path.join(DB, "brief.json"), si.get("brief") or {})
     except Exception as e:
@@ -260,7 +268,7 @@ def analyze(prog=None):
     latest = {
         "day": D.days[-1], "days": D.T, "first_day": D.days[0],
         "generated": now_tw().strftime("%Y-%m-%d %H:%M"),
-        "market": dict({k: v for k, v in mkt.items() if k != "check"}, risk=risk_out),
+        "market": dict({k: v for k, v in mkt.items() if k != "check"}, risk=risk_out, crash=crash_out),
         "industries": res["industries"],
         "stocks": stocks,
         "model": {hn: {k: res["model"]["horizons"][hn][k] for k in ("label", "top_hit", "base_hit", "spread_avg", "spread_win", "eval_days", "ic_avg", "rel")}

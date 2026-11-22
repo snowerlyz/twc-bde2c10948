@@ -11,6 +11,8 @@
    得到不受行情冷熱影響的標準化分布；乘上今天的波動度，再整體平移到「上漲機率＝第 1 點的機率」，
    取 10%／50%／90% 位置。逐日回測：8 成區間實際涵蓋約 78%～81%。
 3. 期間內高點／低點：同樣做法，看 h 天內收盤的最高點與最低點。
+4. 急跌後（近 5 天跌 10% 以上）的短期（5 天以內）：今天的波動改用「近 5 天與近 20 天各半」。
+   8 個市場的急跌後下一週回測：原本的 8 成範圍只涵蓋 58%（大反彈特別多），改用近期波動後 80%（tools/crash_study.py）。
 全程只用「當天以前」已知的資料。
 """
 import bisect
@@ -22,6 +24,7 @@ from util import DB, read_json
 PATH = os.path.join(DB, "twii_long.json")
 MIN_SAMPLES = 500
 SHRINK_W = 10.0
+CRASH_5D = -0.10
 
 
 class Long:
@@ -44,9 +47,12 @@ class Long:
             s1, s2 = p1[i + 1] - p1[a], p2[i + 1] - p2[a]
             return max(0.0, s2 / m - (s1 / m) ** 2)
         self.sig = []
+        self.fast = []                         # 近 5 天與近 20 天各半（急跌後的短期用）
         for i in range(n):
             v20, v250 = var(i, 20), var(i, 250)
             self.sig.append(math.sqrt(0.5 * v20 + 0.5 * v250) if v20 is not None and v250 is not None and i >= 250 else None)
+            v5 = sum(x * x for x in r[max(0, i - 4):i + 1]) / 5.0
+            self.fast.append(math.sqrt(0.5 * v5 + 0.5 * v20) if v20 is not None and i >= 250 else None)
         self._cache = {}
 
     def idx_before(self, day):
@@ -113,9 +119,13 @@ def load(D=None):
     if len(s) < 2000:
         return None
     if D is not None:
-        # 和本地的收盤資料對齊：只用到最新交易日（避免 Yahoo 多出還沒收盤的今天）
-        last = D.days[-1]
-        s = {d: v for d, v in s.items() if d <= last}
+        # 和本地的收盤資料對齊：只用到最新交易日（避免 Yahoo 多出還沒收盤的今天），Yahoo 還沒更新的日子用本地收盤補上
+        try:
+            from risk import _series
+            s = _series(D)
+        except Exception:
+            last = D.days[-1]
+            s = {d: v for d, v in s.items() if d <= last}
     return Long(s)
 
 
@@ -152,6 +162,11 @@ def forecast(L, day, level, h, p_up):
     z, zx, zn = L.zdist(h, t + 1)
     if len(z) < MIN_SAMPLES:
         return None
+    crash = t >= 5 and L.c[t] / L.c[t - 5] - 1 <= CRASH_5D
+    wide = None
+    if crash and h <= 5 and L.fast[t] and L.fast[t] > s:
+        wide = round(L.fast[t] / s, 2)
+        s = L.fast[t]
     d = s * math.sqrt(h)
     # 整體平移，讓「到期時上漲」的機率＝p_up（和方向判斷一致）
     sh = -_q(z, 1 - p_up) * d
@@ -164,4 +179,5 @@ def forecast(L, day, level, h, p_up):
             "med_lv": lv(q[0.5]), "lo_lv": lv(q[0.1]), "hi_lv": lv(q[0.9]),
             "max50": pc(mx[0.5]), "max90": pc(mx[0.9]), "min50": pc(mn[0.5]), "min10": pc(mn[0.1]),
             "max90_lv": lv(mx[0.9]), "min10_lv": lv(mn[0.1]), "max50_lv": lv(mx[0.5]), "min50_lv": lv(mn[0.5]),
-            "vol": round(s * math.sqrt(250), 4), "years": round(len(L.c) / 250.0, 1), "since": L.dates[0][:4]}
+            "vol": round(s * math.sqrt(250), 4), "years": round(len(L.c) / 250.0, 1), "since": L.dates[0][:4],
+            "crash": crash, "wide": wide}

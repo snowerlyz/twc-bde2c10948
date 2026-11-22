@@ -407,7 +407,7 @@ def _log_and_eval(D, brief):
             "rows": [{"d": d, "p": x.get("p"), "r": x.get("r"), "lv": x.get("lv")} for d, x in sorted(lg.items())[-10:]]}
 
 
-def build(D, risk=None):
+def build(D, risk=None, crash=None):
     src = read_json(SITU_PATH, {}) or {}
     try:
         intl, dom = _indicators(D, src)
@@ -426,6 +426,12 @@ def build(D, risk=None):
         log("隔夜美股模型失敗：%s\n%s" % (e, traceback.format_exc()))
         ov, ovst = None, None
     brief = _brief(D, ov, risk, intl, dom, news)
+    if crash and crash.get("active") and brief.get("advice"):
+        # 已經急跌（事前定好的規則，依據見「大跌之後」卡片）：不要恐慌賣光，持股降到再跌 2～3 成也撐得住、不融資，新買進分批
+        adv = "已經急跌，不要一次全部賣光；持股降到「再跌 2～3 成也不用被迫賣」的量、不用融資，新買進分批"
+        brief["sentence"] = brief["sentence"].replace("建議：" + brief["advice"] + "。", "建議：" + adv + "。")
+        brief["advice"] = adv
+        brief["crash"] = True
     try:
         brief["live"] = _log_and_eval(D, brief)
     except Exception as e:

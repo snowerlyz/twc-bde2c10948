@@ -93,6 +93,7 @@ const GLOSS = {
   brief: "今日盤勢：開盤前的一句話預測與建議。方向來自隔夜美股（台積電 ADR 與費城半導體的平均漲跌）：2005 年起每天只用當時已知的資料估計台股當天收紅的機率，實測猜對約 6 成多，比一律猜漲準。再加上大跌風險等級，依事先定好的規則給建議。下午收盤後美股還沒開，所以只會先顯示風險，早上 7:35 左右才更新方向。這是統計參考，不是投資建議。",
   situ: "國內外情勢：國際（美股恐慌指數、美債利率、美元、油價、費城半導體、依國際新聞計算的地緣政治風險與美國經濟政策不確定指數）、國內（國發會景氣燈號、新台幣、台灣的地緣政治風險）與政治經濟新聞的主題熱度。每一項和過去一年（新聞指數是三年）比較，偏高或偏低時依常理標示偏有利或偏不利。2005 年以來的檢驗顯示這些情勢對之後大盤漲跌的預測力很弱，所以只用來了解背景，不拿來猜方向。",
   risk: "大跌風險：估計加權指數「5 個交易日內最低收盤比今天低 4% 以上」與「下個交易日跌 2% 以上」的機率。依據是加權指數 2000 年以來的每日收盤：近一個月波動、波動是否突然變大、離近 3 個月高點多遠、離季線多遠、最近幾天的漲跌；早上 7:35 美股收盤後，再加上隔夜的台積電 ADR 與費城半導體。每天只用當時已知的資料重新估計（walk-forward）。等級是今天的機率在過去二十年中的位置：後 50% 低、50%～75% 正常、75%～90% 偏高、前 10% 高。這是在估「風險有多大」，不是預測「會不會跌」：高風險的日子隔天平均漲跌接近 0，只是上下震盪變大；突然的消息（例如國際突發事件）在發生前通常看不出來。",
+  crash: "大跌之後：加權指數最近 60 個交易日內出現「5 個交易日跌 10% 以上」或「20 個交易日跌 20% 以上」的急跌時才顯示。歷史數字來自 9 個市場（台灣、美國 S&P 500、那斯達克、日經、恆生、韓國、費城半導體、德國、英國）1927 年以來的日線：找出同級急跌，不同市場 45 天內同時發生算同一波，依「急跌前一年漲幅是否 30% 以上」分組，看之後一年怎麼走，並比較抱住、賣出等站回均線再買、賣一半、新資金一次買或分批的結果。定義與比較方式都在看結果前決定。指數不含股利、現金不計利息。這是歷史統計，不是預測，也不構成投資建議。",
   mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
   paperpos: "未實現損益＝現在用現價賣掉、扣掉手續費和證交稅之後，比買進成本（含買進手續費）多或少多少。停損／停利：成交價碰到你設定的價格，就自動以當下的買一價送出賣單（之後一樣要排隊才成交）。",
   timing: "買賣時機的依據：把最近 250 個已揭曉交易日、排名前 5%（賣出看後 5%）的股票拿來比較四種做法——隔天開盤買或收盤前買 × 到期那天開盤賣或收盤賣——扣掉手續費和稅之後誰的平均報酬比較好。台股常見「開高走低」，所以多半是收盤前買、開盤賣比較好；每天都會用最新結果重算。另外也測過「回檔掛低價買」「固定停損停利」「移動停損」「評價變差就賣」，兩年回測平均都比單純持有到期差（停損停利會砍掉後來大漲的股票），所以沒有當成預設。",
@@ -649,6 +650,7 @@ async function vHome(tok) {
   <p class="lead">依 ${dayFull(L.day)} 收盤資料，替每檔股票打分：建議買、相對看好、中立、相對看淡、建議賣。準確度沒達標時不硬喊「建議」。</p>
   ${briefCard(SI)}
   ${riskCard(M.risk, LV)}
+  ${crashCard(M.crash)}
   ${guideCard(RC, cnt)}
   <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
     const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
@@ -1677,6 +1679,50 @@ function riskCard(R, LV) {
       <p class="note">限制：完全沒有前兆的突發消息，發生前通常看不出來；這裡能做的是在第一次大跌之後、或美股先跌的隔天早上提高警示。</p>
     </details></section>`;
 }
+// 大跌之後：剛急跌時，歷史上同級急跌之後怎麼走、各種應對方式的結果（研究見 tools/crash_study.py）
+function crashCard(C) {
+  if (!C || !C.active || !C.study || !C.study.grp) return "";
+  const st = C.state, tr = C.trig, Sd = C.study, g = Sd.grp, o = Sd.other, a = Sd.all, pol = Sd.policy || {};
+  const P = (v, s) => v == null ? "—" : `${s && v > 0 ? "+" : ""}${Math.round(v * 100)}%`;
+  const P1 = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+  const md = (d) => `${+d.slice(4, 6)}/${+d.slice(6)}`;
+  const ymd = (d) => `${d.slice(0, 4)}/${+d.slice(4, 6)}/${+d.slice(6)}`;
+  const kindTxt = tr.kind === "B" ? "20 個交易日跌 20% 以上" : "5 個交易日跌 10% 以上";
+  const grpTxt = tr.hot ? "急跌前一年大漲 30% 以上" : "急跌前一年漲幅不到 30%";
+  const eps = (Sd.episodes || []).map((e) => `<tr><td>${ymd(e.d)}</td><td>${esc(e.mk.join("、"))}</td><td class="num">${P(e.g, 1)}</td><td class="num ${cls(e.f250)}">${P(e.f250, 1)}</td><td class="num">${P(e.mn, 1)}</td></tr>`).join("");
+  const tw = ((C.tw || {})[tr.kind] || []).map((e) => `<tr><td>${ymd(e.d)}</td><td class="num">${P1(e.r)}</td><td class="num ${cls(e.f20)}">${P1(e.f20)}</td><td class="num ${cls(e.f60)}">${P1(e.f60)}</td><td class="num ${cls(e.f250)}">${e.done ? P1(e.f250) : "—"}</td><td class="num">${e.mn != null ? P1(e.mn) : "—"}</td></tr>`).join("");
+  return `<section class="card section crashcard"><div class="card-h"><h2>${svgI("fut")} 大跌之後：歷史上怎麼走、怎麼應對</h2><span class="rk rk3">急跌中</span>${help("crash")}</div>
+    <p>加權指數 ${md(st.day)} 收 ${fmtPx(st.close)}：近 20 天 ${P1(st.r20)}、近 5 天 ${P1(st.r5)}，比 ${md(st.peak_day)} 的高點 ${fmtPx(st.peak)} 低 ${Math.abs(st.dd * 100).toFixed(1)}%。${ymd(tr.first)} 起符合「${kindTxt}」的急跌${tr.prior_gain != null ? `，急跌前一年漲了 ${P(tr.prior_gain)}` : ""}。</p>
+    <div class="kv mini crkv">
+      <div><span>一年後平均</span><b class="num ${cls(g.f250)}">${P(g.f250, 1)}</b><span class="note">中間值 ${P(g.f250_med, 1)}</span></div>
+      <div><span>一年後上漲</span><b class="num">${P(g.up250)}</b><span class="note">的波段</span></div>
+      <div><span>之後又再跌 20% 以上</span><b class="num">${P(g.worse20)}</b><span class="note">再跌 10% 以上 ${P(g.worse10)}</span></div>
+      <div><span>之後最低（中間值）</span><b class="num neg">${P(g.mn_med, 1)}</b><span class="note">從急跌那天收盤算</span></div>
+    </div>
+    <p class="note" style="margin:6px 0 0">依據：${esc((Sd.markets || []).length)} 個市場、${Sd.since} 年以來「${grpTxt}」的同級急跌 ${g.n} 波（不同市場同時發生算一波）。${o ? `另一組（${tr.hot ? "跌前沒有大漲" : "跌前大漲"}）${o.n} 波：一年後平均 ${P(o.f250, 1)}、${P(o.up250)} 上漲${tr.hot ? "——大漲之後的急跌，結果明顯比較差" : ""}。` : ""}</p>
+    <h3 class="crh">怎麼應對（歷史數字，事先定好的比較方式）</h3>
+    <ol class="crrules">${(C.rules || []).map((r) => `<li><b>${esc(r.t)}</b><span>${esc(r.d)}</span></li>`).join("")}</ol>
+    <details class="fold"><summary class="note">各種做法的比較表</summary>
+      <p class="note" style="margin:6px 0 0">從急跌那天收盤開始算一年（250 個交易日），訊號收盤判斷、隔天收盤執行，每次買賣扣 0.15%。「${grpTxt}」的 ${g.n} 波：</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>手上有股票</th><th>一年報酬（平均）</th><th>期間最大回落（中間值）</th></tr></thead><tbody>
+        <tr><td>抱住不動</td><td class="num">${P1(g.hold)}</td><td class="num">${P1(g.hold_mdd)}</td></tr>
+        <tr><td>全部賣出，等站回 200 日均線再買回</td><td class="num">${P1(g.s200)}</td><td class="num">${P1(g.s200_mdd)}</td></tr>
+        <tr><td>賣一半，等站回 20 日均線再買回</td><td class="num">${P1(g.half)}</td><td class="num">${P1(g.half_mdd)}</td></tr>
+      </tbody></table></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>新的資金</th><th>一年報酬（平均）</th><th>比一次買好的比例</th></tr></thead><tbody>
+        <tr><td>急跌當天一次買進</td><td class="num">${P1(g.now)}</td><td class="num">—</td></tr>
+        <tr><td>分 3 批（當天、20 天後、40 天後）</td><td class="num">${P1(g.n3)}</td><td class="num">${P(g.n3_win)}</td></tr>
+      </tbody></table></div>
+      ${pol.hold && pol.ma200 ? `<p class="note">長期一直使用的規則（9 個市場各自從有資料起算，平均）：一直抱住 年報酬 ${P1(pol.hold.cagr)}、最大回落 ${P1(pol.hold.mdd)}；只在 200 日均線之上持有 ${P1(pol.ma200.cagr)}、${P1(pol.ma200.mdd)}；依波動調整持股 ${P1(pol.vol.cagr)}、${P1(pol.vol.mdd)}。指數不含股利、現金不計利息。</p>` : ""}
+    </details>
+    ${eps ? `<details class="fold"><summary class="note">歷史上「跌前大漲」的同級急跌（${(Sd.episodes || []).length} 波）</summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>市場</th><th>跌前一年</th><th>一年後</th><th>之後最低</th></tr></thead><tbody>${eps}</tbody></table></div>
+      <p class="note">有像 1987、2020 年很快漲回的，也有像 1929、2000 年接著再跌三、四成的。每次原因不同，這裡看不出這次會是哪一種。</p></details>` : ""}
+    ${tw ? `<details class="fold"><summary class="note">台股自己（${C.tw_since} 年起）的同級急跌</summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>跌幅</th><th>20 天後</th><th>60 天後</th><th>一年後</th><th>之後一年最低</th></tr></thead><tbody>${tw}</tbody></table></div></details>` : ""}
+    <p class="note" style="margin:8px 0 0">限制：同級的急跌在歷史上不多（每組幾十波甚至只有 10 波），這是「過去大致怎麼走」，不是預測這次；不構成投資建議。</p>
+  </section>`;
+}
 function mktCard(L, MD) {
   const M = L.market, MC = (MD && MD.market_check) || {};
   if (!HZ.some((h) => M.horizons[h] && M.horizons[h].fc)) return "";
@@ -1697,6 +1743,7 @@ function mktCard(L, MD) {
         <div><span>期間內高點可能到</span><b>${pts(f.max50_lv)}</b><span class="note">1 成機會衝過 ${pts(f.max90_lv)}</span></div>
         <div><span>期間內低點可能到</span><b>${pts(f.min50_lv)}</b><span class="note">1 成機會跌破 ${pts(f.min10_lv)}</span></div>
       </div>
+      ${f.wide ? `<p class="note" style="margin:8px 0 0">剛急跌：這段範圍已改用最近 5 天與 20 天的波動計算（約平常算法的 ${f.wide.toFixed(1)} 倍寬），急跌後一週大漲大跌都常見。</p>` : ""}
       ${why.length ? `<p class="note" style="margin:8px 0 0">依據：${esc(why.join("；"))}${f.rel != null && f.rel < 0.3 ? "。模型最近判斷力不足，以歷史上漲比例為主" : ""}</p>` : (f.rel != null && f.rel < 0.3 ? `<p class="note" style="margin:8px 0 0">模型最近判斷力不足，以歷史上漲比例為主。</p>` : "")}
       ${c.n ? `<p class="note" style="margin:4px 0 0">大盤分數過去兩年實測：說偏多的 ${c.bull_n} 天，${pctTxt(c.bull_hit)} 真的漲${c.bear_n ? `；說偏空的 ${c.bear_n} 天，${pctTxt(c.bear_hit)} 真的跌` : ""}（一律猜漲是 ${pctTxt(c.base_up)}）。${f.cov != null ? `範圍：近 5 年 8 成範圍實際涵蓋 ${pctTxt(f.cov)}。` : ""}</p>` : ""}
     </div>`;
@@ -2145,6 +2192,7 @@ function renderTicket() {
         <label>當成交價<select id="ptdir"><option value="le">跌到（含）以下</option><option value="ge">漲到（含）以上</option></select></label>
         <label>觸發價<input id="ptpx" type="number" step="0.01" value="${esc(pt.trigPx)}" style="width:110px"></label>
       </div>
+      ${S.latest && S.latest.market && S.latest.market.crash && S.latest.market.crash.active ? `<p class="note pwarn">大盤剛急跌：接下來幾天上下震盪通常特別大，單筆金額縮小、停損放寬。<a href="#/">看「大跌之後」</a></p>` : ""}
       <p class="note" id="pest"></p>
       <button class="btn primary" id="psubmit">送出委託</button>
       <p class="pmsg" id="pmsg"></p>
