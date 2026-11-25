@@ -107,12 +107,20 @@ const GLOSS = {
 };
 function help(k) { return `<button class="help" type="button" data-help="${k}" aria-label="說明">?</button>`; }
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-help]");
+  if (e.target.closest(".pop a")) { $$(".pop").forEach((p) => p.remove()); return; }
+  if (e.target.closest(".pop")) return;
+  const b = e.target.closest("[data-help],[data-term]");
   $$(".pop").forEach((p) => p.remove());
   if (!b) return;
   e.preventDefault(); e.stopPropagation();
   const p = document.createElement("div");
-  p.className = "pop"; p.textContent = GLOSS[b.dataset.help] || "";
+  p.className = "pop";
+  if (b.dataset.term) {
+    const t = TERM[b.dataset.term];
+    if (!t) return;
+    p.classList.add("tpop");
+    p.innerHTML = `<b>${esc(t.n)}</b><p class="tp-s">${esc(t.s)}</p>${t.b ? `<p>${esc(t.b)}</p>` : ""}<a href="#/learn/${t.id}">到投資小教室看例子 →</a>`;
+  } else p.textContent = GLOSS[b.dataset.help] || "";
   document.body.appendChild(p);
   const r = b.getBoundingClientRect();
   const w = Math.min(300, innerWidth - 24);
@@ -120,6 +128,91 @@ document.addEventListener("click", (e) => {
   p.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left + scrollX - w / 2)) + "px";
   p.style.top = (r.bottom + scrollY + 8) + "px";
 });
+
+// ====================================================================== 名詞自動加說明（投資小教室 web/learn.js）
+const TERM = {}, TERM_RE = (() => {
+  const words = [];
+  for (const ch of (window.LEARN || [])) for (const t of ch.terms) { t.ch = ch.id; TERM[t.id] = t; for (const a of t.a || []) words.push([a, t.id]); }
+  words.sort((x, y) => y[0].length - x[0].length);
+  TERM._by = Object.fromEntries(words);
+  return words.length ? new RegExp(words.map(([w]) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : null;
+})();
+const TERM_SKIP = "a,button,summary,input,textarea,select,h1,th,svg,.rt,.pill,.rk,.seg,.list,.term,.tick,.ticker,.kv b,.num,.lv-skip";
+function termify(root) {
+  if (!TERM_RE || !root) return;
+  const used = new Map();
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => !n.nodeValue.trim() || !n.parentElement || n.parentElement.closest(TERM_SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  });
+  const nodes = [];
+  while (tw.nextNode()) nodes.push(tw.currentNode);
+  for (const n of nodes) {
+    const box = n.parentElement.closest(".pop") ? null : (n.parentElement.closest(".card,section,details") || root);
+    if (!box) continue;
+    let set = used.get(box); if (!set) { set = new Set(); used.set(box, set); }
+    if (set.size >= 6) continue;
+    const txt = n.nodeValue; TERM_RE.lastIndex = 0;
+    let m, last = 0, frag = null;
+    while ((m = TERM_RE.exec(txt))) {
+      const id = TERM._by[m[0]];
+      if (set.has(id) || set.size >= 6) continue;
+      set.add(id);
+      frag = frag || document.createDocumentFragment();
+      frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+      const sp = document.createElement("span"); sp.className = "term"; sp.dataset.term = id; sp.tabIndex = 0; sp.textContent = m[0];
+      frag.appendChild(sp); last = m.index + m[0].length;
+    }
+    if (frag) { frag.appendChild(document.createTextNode(txt.slice(last))); n.replaceWith(frag); }
+  }
+}
+// ====================================================================== 投資小教室
+function vLearn(tok, arg) {
+  const L = window.LEARN || [], done = new Set(store.get("learned", []) || []);
+  const total = L.reduce((a, c) => a + c.terms.length, 0);
+  const term = (t) => `<details class="lterm" id="t-${t.id}" data-q="${esc([t.n, t.s, t.b || "", (t.a || []).join(" ")].join(" "))}"><summary><span class="lck ${done.has(t.id) ? "on" : ""}" aria-hidden="true">✓</span><b>${esc(t.n)}</b><span class="ls">${esc(t.s)}</span></summary>
+    <div class="lbody">${t.b ? `<p>${esc(t.b)}</p>` : ""}${t.e ? `<p class="lex"><b>例子</b>${esc(t.e)}</p>` : ""}${t.w ? `<p class="note">在台股羅盤哪裡看到：<a href="${t.w[1]}">${esc(t.w[0])}</a></p>` : ""}
+    <button class="btn sm" type="button" data-learned="${t.id}">${done.has(t.id) ? "已經懂了 ✓（點一下取消）" : "我看懂了"}</button></div></details>`;
+  view.innerHTML = `<div class="learn"><h1 class="grad">投資小教室</h1>
+  <p class="lead">完全不懂股票也沒關係。照順序讀 7 課，每課大約 5 分鐘；每個名詞都有「一句話重點、白話說明、例子」。在其他頁面看到<span class="term term-demo">虛線的字</span>，點一下也會跳出說明。</p>
+  <section class="card section lhead"><div class="lprog"><span>學習進度</span><b class="num" id="lcount">${done.size} / ${total}</b><div class="lbar"><i id="lbar" style="width:${total ? done.size / total * 100 : 0}%"></i></div></div>
+    <input class="lsearch" id="lq" type="search" placeholder="找名詞，例如：融資、跑贏大盤、限空令" autocomplete="off">
+    <div class="lchips">${L.map((c, k) => `<a href="#/learn/${c.id}" data-ch="${c.id}">${k + 1}. ${esc(c.t.replace(/^第 \d 課　/, ""))}</a>`).join("")}</div></section>
+  ${L.map((c) => `<section class="card section lchap" id="${c.id}"><div class="card-h"><h2>${esc(c.t)}</h2><span class="note lcc" data-c="${c.id}">${c.terms.filter((t) => done.has(t.id)).length} / ${c.terms.length}</span></div>
+    <p class="note lgoal">學完你會：${esc(c.goal)}</p>${c.terms.map(term).join("")}</section>`).join("")}
+  <p class="lempty note" id="lempty" hidden>找不到這個名詞。可以換個說法，或到<a href="#/help">使用說明</a>看看。</p>
+  ${disclaimer}</div>`;
+  const upd = () => {
+    const d = new Set(store.get("learned", []) || []);
+    $("#lcount").textContent = `${d.size} / ${total}`; $("#lbar").style.width = (total ? d.size / total * 100 : 0) + "%";
+    L.forEach((c) => { const e = $(`.lcc[data-c="${c.id}"]`); if (e) e.textContent = `${c.terms.filter((t) => d.has(t.id)).length} / ${c.terms.length}`; });
+  };
+  $(".learn", view).addEventListener("click", (e) => {
+    const b = e.target.closest("[data-learned]");
+    if (b) {
+      const d = new Set(store.get("learned", []) || []), id = b.dataset.learned;
+      d.has(id) ? d.delete(id) : d.add(id); store.set("learned", [...d]);
+      b.textContent = d.has(id) ? "已經懂了 ✓（點一下取消）" : "我看懂了";
+      $(`#t-${id} .lck`).classList.toggle("on", d.has(id)); upd();
+      return;
+    }
+    const a = e.target.closest("[data-ch]");
+    if (a) { e.preventDefault(); const el = $("#" + a.dataset.ch); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  });
+  $("#lq").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    let any = false;
+    $$(".lchap").forEach((sec) => {
+      let n = 0;
+      $$(".lterm", sec).forEach((d) => { const hit = !q || d.dataset.q.toLowerCase().includes(q); d.hidden = !hit; if (hit) n++; d.open = !!q && hit && n <= 3; });
+      sec.hidden = !n; if (n) any = true;
+    });
+    $("#lempty").hidden = any;
+  });
+  if (arg) {
+    const t = TERM[arg], el = t ? $("#t-" + arg) : $("#" + arg);
+    if (el) { if (t) el.open = true; setTimeout(() => el.scrollIntoView({ block: "start" }), 30); }
+  }
+}
 
 // ====================================================================== 圖示
 const ICON = {
@@ -141,13 +234,14 @@ const ICON = {
   picks: '<path d="M12 3v18M5 10l7-7 7 7"/><path d="M5 21h14" opacity=".5"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
+  learn: '<path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v16H5.5c-.8 0-1.5-.7-1.5-1.5Z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v16h5.5c.8 0 1.5-.7 1.5-1.5Z"/><path d="M7 8h2M15 8h2M7 11h2M15 11h2"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
 };
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
   ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
-  ["#/robot", "機器人模擬", "robot"], ["#/paper", "模擬交易", "wallet"],
+  ["#/robot", "機器人模擬", "robot"], ["#/paper", "模擬交易", "wallet"], ["#/learn", "投資小教室", "learn"],
   null,
   ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
   ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
@@ -588,7 +682,7 @@ async function route() {
   });
   $$(".pop").forEach((p) => p.remove());
   const [, page, arg] = hash.match(/^#\/?([^/]*)\/?(.*)$/) || [];
-  if (!S.latest && !["help"].includes(page)) { renderOnboarding(); return; }
+  if (!S.latest && !["help", "learn"].includes(page)) { renderOnboarding(); return; }
   try {
     if (!page) await vHome(tok);
     else if (page === "stocks") await vStocks(tok);
@@ -608,12 +702,13 @@ async function route() {
     else if (page === "robot") await vRobot(tok);
     else if (page === "paper") await vPaper(tok, decodeURIComponent(arg || ""));
     else if (page === "help") await vHelp(tok);
+    else if (page === "learn") vLearn(tok, decodeURIComponent(arg || ""));
     else await vHome(tok);
   } catch (e) {
     console.error(e);
     if (tok === routeToken) view.innerHTML = `<div class="card empty"><h2>這一頁暫時無法顯示</h2><p>${esc(e.message === "notfound" ? "找不到這檔股票的分析，可能是剛上市、已下市，或平常幾乎沒人買賣。" : "讀取資料時發生問題：" + e.message)}</p><a class="btn" href="#/">回到總覽</a></div>`;
   }
-  if (tok === routeToken) { FX.enhance(view); if (!location.hash.startsWith("#/stock/")) scrollTo(0, 0); }
+  if (tok === routeToken) { FX.enhance(view); if (page !== "learn") termify(view); if (!location.hash.startsWith("#/stock/") && !(page === "learn" && arg)) scrollTo(0, 0); }
 }
 addEventListener("hashchange", route);
 
@@ -646,13 +741,14 @@ async function vHome(tok) {
   const rated = L.stocks.filter((r) => r.ra && !r.etf);
   const cnt = HZ.map((h, i) => { const c = { B: 0, b: 0, S: 0, s: 0 }; rated.forEach((r) => { const a = r.ra[i]; if (a in c) c[a]++; }); return c; });
   const cntTxt = (c, side) => { const k = side, w = side.toLowerCase(); return c[k] ? `<span class="rt ${RA[k][1]}">${RA[k][0]}</span> <b class="num">${c[k]}</b>` : `<span class="rt ${RA[w][1]}">${RA[w][0]}</span> <b class="num">${c[w]}</b>`; };
+  const E = M.events || {}, evOn = (E.events || []).filter((e) => e.active);
+  const RK = M.risk, CR = M.crash && M.crash.active && M.crash.study && M.crash.study.grp ? M.crash : null;
+  const P0 = (v) => v == null ? "—" : Math.round(v * 100) + "%";
   view.innerHTML = `
   <h1 class="grad">今天的評價</h1>
-  <p class="lead">依 ${dayFull(L.day)} 收盤資料，替每檔股票打分：建議買、相對看好、中立、相對看淡、建議賣。準確度沒達標時不硬喊「建議」。</p>
-  ${briefCard(SI)}
-  ${riskCard(M.risk, LV)}
-  ${crashCard(M.crash)}
-  ${eventsCard(M.events)}
+  <p class="lead">${dayFull(L.day)} 收盤後更新。先看「今天重點」，想知道更多再往下點開。看到<span class="term term-demo">虛線的字</span>點一下就有解釋，也可以到<a href="#/learn">投資小教室</a>從頭學。</p>
+  ${todayCard(L, RC, cnt, SI, evOn)}
+  ${taiexCard(M)}
   ${guideCard(RC, cnt)}
   <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
     const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
@@ -665,7 +761,12 @@ async function vHome(tok) {
     <ul class="note legend"><li>${rTag("B")}<span>過去照做多半跑贏大盤</span></li><li>${rTag("b")}<span>比大多數股票好，但還沒達標</span></li><li>${rTag("S")}<span>過去照做多半跑輸大盤</span></li><li>${rTag("s")}<span>比大多數股票差，但還沒達標</span></li><li><span>點股票可以看理由與準確度</span></li></ul>
     <div class="list" id="hlist"></div></section>
   ${mktCard(L, MD)}
-  ${situCard(SI)}
+  <h2 class="grp-h">市場狀況<small>點開看細節</small></h2>
+  ${foldCard("brief", "今日盤勢", "", SI && SI.brief && SI.brief.sentence, briefCard(SI))}
+  ${RK && RK.level ? foldCard("risk", "大盤大跌風險", `<span class="rk ${RISK_TONE[RK.level]}">${RK.level}</span>`, `一週內跌 4% 以上的機率 ${P0(RK.w5.p)}（平常約 ${P0(RK.w5.base)}）`, riskCard(RK, LV)) : ""}
+  ${CR ? foldCard("crash", "大跌之後怎麼辦", '<span class="rk rk3">急跌中</span>', `比 ${dayStr(CR.state.peak_day)} 的高點低 ${Math.abs(CR.state.dd * 100).toFixed(0)}%；歷史上類似的急跌，一年後 ${P0(CR.study.grp.up250)} 的時候比較高`, crashCard(M.crash)) : ""}
+  ${evOn.length ? foldCard("events", "法規與重大消息", E.caution ? '<span class="rk rk2">影響中</span>' : "", `${evOn.length} 件還在影響：${evOn.slice(0, 2).map((e) => e.title).join("、")}${evOn.length > 2 ? "…" : ""}`, eventsCard(E)) : ""}
+  ${SI && ((SI.intl || []).length || (SI.dom || []).length) ? foldCard("situ", "國內外情勢", "", SI.summary, situCard(SI)) : ""}
   <details class="card more-info section"><summary>大盤、國際股市、新聞、產業與權證</summary>
   <section class="card hero glow"><span class="glow-ring"></span>
     <div class="dial-wrap">${dial(mh.score, { size: "lg" })}<div class="verdict">大盤${mh.label}</div>${mh.rel != null ? `<a class="relnote" href="#/check">可信度 <span class="pill ${relInfo(mh.rel).c}">${relInfo(mh.rel).t}</span></a>${help("rel")}` : ""}</div>
@@ -708,6 +809,7 @@ async function vHome(tok) {
   };
   $("#hside").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) hdraw(b.dataset.s); });
   hdraw("B");
+  wireHome(M);
   $$("[data-hz2]").forEach((b) => b.addEventListener("click", () => setHz(+b.dataset.hz2)));
   const ia = $("#indall");
   if (ia) ia.addEventListener("click", () => { $("#indbars").innerHTML = indBars(ind, 999); ia.remove(); });
@@ -717,21 +819,117 @@ function guideCard(RC, cnt) {
   const i = S.hz, h = HZ[i], x = (RC && RC.h[h]) || {}, g = x.gate || {}, c = cnt[i];
   const P = (v) => v == null ? null : Math.round(v * 100) + "%";
   const b = g.buy || {}, sl = g.sell || {};
+  const ten = (v) => v == null ? "" : `（10 次裡大約 ${Math.round(v * 10)} 次）`;
   let buy;
-  if (c.B) buy = `今天有 <b>${c.B} 檔「建議買」</b>。過去照這個評價買，${HZ_DAYS[i]}後約 <b>${P(b.rate) || "—"}</b> 的時候跑贏大盤。`;
-  else if (c.b) buy = `今天<b>沒有</b>股票達到「建議買」的標準。列出的 ${c.b} 檔「相對看好」只是比大多數股票好一些：過去這樣挑，${HZ_DAYS[i]}後只有 <b>${P(b.trail) || "—"}</b> 跑贏大盤${b.trail != null && b.trail < 0.5 ? "（不到一半）" : ""}。比較適合放進自選觀察，不要只因為它在清單上就買。`;
+  if (c.B) buy = `今天有 <b>${c.B} 檔「建議買」</b>。過去照這樣買，${HZ_DAYS[i]}後有 <b>${P(b.rate) || "—"}</b> 的時候比大盤好${ten(b.rate)}。還是要分散買、想好跌到哪裡要賣。`;
+  else if (c.b) buy = `今天<b>沒有</b>「建議買」。列出的 ${c.b} 檔「相對看好」只是比其他股票好一點：過去這樣挑，${HZ_DAYS[i]}後只有 <b>${P(b.trail) || "—"}</b> 比大盤好${ten(b.trail)}。<b>先放進自選觀察就好</b>，不要只因為它在清單上就買。`;
   else buy = "今天沒有看好的股票。";
   let sell;
-  if (c.S) sell = `<b>${c.S} 檔「建議賣」</b>：過去約 <b>${P(sl.rate) || "—"}</b> 的時候，它們${HZ_DAYS[i]}後真的比大盤差。手上有的話，可以考慮賣掉或至少不要再加碼；沒有的話就先別買。`;
-  else if (c.s) sell = `「相對看淡」${c.s} 檔：比大多數股票差一些，但還沒達到「建議賣」的準確度，手上有的話留意就好。`;
+  if (c.S) sell = `今天有 <b>${c.S} 檔「建議賣」</b>：過去有 <b>${P(sl.rate) || "—"}</b> 的時候，它們${HZ_DAYS[i]}後真的比大盤差。手上有的話可以考慮賣掉，至少不要再買；沒有就先別買。`;
+  else if (c.s) sell = `「相對看淡」${c.s} 檔：比其他股票差一點，但還不到「建議賣」，手上有的話多留意就好。`;
   else sell = "今天沒有特別不看好的股票。";
-  return `<section class="card section guide"><h2>第一次看？先讀這裡（${HZ_NAME[i]}，約 ${HZ_SHORT[i]}）</h2>
+  const open = !store.get("guideDone", false);
+  return `<details class="card section guide xguide" ${open ? "open" : ""}><summary><h2>第一次看？三步驟看懂（${HZ_NAME[i]}，約 ${HZ_SHORT[i]}）</h2><span class="xf-c">${open ? "收起" : "展開"}</span></summary>
     <ol class="steps">
       <li><span><b>想買股票：</b>${buy}</span></li>
-      <li><span><b>手上已經有股票：</b>在最上面的搜尋框輸入代號或名稱，看它是不是「建議賣」。${sell}</span></li>
-      <li><span><b>打算放多久？</b>放約一週選「短期」、約一個月選「中期」、約三個月選「長期」（最上面可以切換）。</span></li>
+      <li><span><b>手上已經有股票：</b>在最上面的搜尋框打代號或名稱，看它是不是「建議賣」。${sell}</span></li>
+      <li><span><b>打算放多久？</b>放一週左右選「短期」、一個月選「中期」、三個月選「長期」（最上面可以切換）。</span></li>
     </ol>
-    <p class="note">「大盤」指加權指數（台積電等大公司占很大比重），「跑贏大盤」是比它漲得多（或跌得少）。大盤大跌時，看好的股票也可能跟著跌。<a href="#/help" style="color:var(--brass)">名詞解釋</a></p></section>`;
+    <p class="note">「大盤」＝加權指數，台積電等大公司占很大比重。「比大盤好」＝漲得比它多，或跌得比它少；所以大盤大跌時，看好的股票也可能跟著跌。</p>
+    <p class="gbtns"><button class="btn sm" type="button" id="guideDone">我看懂了，先收起來</button><a class="btn sm ghost" href="#/learn">到投資小教室從頭學</a></p></details>`;
+}
+// 今天重點：把最重要的 4 件事用一句話講完，細節在下面點開
+const RISK_DO_SHORT = {
+  "低": "照常操作，每一筆都先想好跌到哪裡要賣。",
+  "正常": "照常操作，每一筆都先想好跌到哪裡要賣。",
+  "偏高": "新買進分 2～3 次買，不要一次買滿；先想好跌到哪裡要賣。",
+  "高": "手上的股票可以減少一些（例如減一半）、不追漲、不借錢買股票。",
+};
+function todayCard(L, RC, cnt, SI, evOn) {
+  const M = L.market, i = S.hz, c = cnt[i], R = M.risk || {}, CR = M.crash && M.crash.active;
+  const fs = ((M.horizons.short || {}).fc) || null;
+  const pts = (v) => Math.round(v).toLocaleString("en-US");
+  const dir = fs ? (fs.p_up >= 0.6 ? "偏向上漲" : fs.p_up <= 0.4 ? "偏向下跌" : "漲跌機會差不多") : "";
+  const rows = [];
+  rows.push(["大盤", `加權指數 <b class="num">${pts(M.taiex)}</b> ${chgHtml(M.taiex_chg)}。${R.level ? `大跌風險<b class="rkw ${RISK_TONE[R.level]}">${R.level}</b>。` : ""}${fs ? `接下來一週${dir}（上漲機率 ${pctTxt(fs.p_up)}）。` : ""}`, R.level ? "risk" : null]);
+  rows.push(["怎麼做", `${CR ? "已經急跌：<b>不要一次全部賣光</b>，也不要一次全部買進。" : ""}${RISK_DO_SHORT[R.level] || RISK_DO_SHORT["正常"]}`, CR ? "crash" : (R.level ? "risk" : null)]);
+  const sp = (k, n) => `<span class="rt ${RA[k][1]}">${RA[k][0]}</span> <b class="num">${n}</b> 檔`;
+  rows.push([`評價（${HZ_NAME[i]}）`, `${c.B ? sp("B", c.B) : sp("b", c.b)}　${c.S ? sp("S", c.S) : sp("s", c.s)}${!c.B ? `<br><span class="note">今天沒有達標的「建議買」，看好名單只能當參考。</span>` : ""}`, "list"]);
+  if (evOn && evOn.length) rows.push(["大事", `${evOn.slice(0, 2).map((e) => esc(e.title)).join("；")}${evOn.length > 2 ? `，還有 ${evOn.length - 2} 件` : ""}。`, "events"]);
+  return `<section class="card section today"><h2>今天重點</h2>
+    <ul class="tdl">${rows.map(([k, v, id]) => `<li><span class="tdk">${k}</span><span class="tdv">${v}</span>${id ? `<button class="tdm" type="button" data-open="${id}">細節</button>` : ""}</li>`).join("")}</ul></section>`;
+}
+// 大盤走勢圖（加權指數，最近半年；可切 1／3／6 個月；虛線是 20 日均線）
+function taiexCard(M) {
+  const ser = M.series || {};
+  if (!(ser.taiex || []).length) return "";
+  const n = store.get("txN", 60);
+  return `<section class="card section txcard"><div class="card-h"><h2>大盤走勢（加權指數）</h2>
+    <div class="seg sm" id="txseg">${[[20, "1 個月"], [60, "3 個月"], [120, "6 個月"]].map(([k, t]) => `<button data-n="${k}" class="${k === n ? "on" : ""}">${t}</button>`).join("")}</div></div>
+    <p class="txsum" id="txsum"></p>
+    <div class="chart" id="txchart"></div>
+    <p class="note"><span class="lg-line"></span>每天收盤　<span class="lg-dash"></span>20 日均線（過去一個月的平均）。線在均線上面代表最近偏強，在下面代表偏弱。</p></section>`;
+}
+function drawTaiex(M, n) {
+  const pt = (v) => Math.round(v).toLocaleString("en-US");
+  const ser = M.series || {}, box = $("#txchart");
+  if (!box) return;
+  const all = ser.taiex || [], days = ser.days || [];
+  const ma20 = ma(all, 20);
+  const k = Math.min(n, all.length), ys = all.slice(-k), ls = days.slice(-k), mm = ma20.slice(-k);
+  const W = Math.max(260, box.clientWidth), H = 200, PR = 56, PT = 10, PB = 22;
+  const vals = [...ys, ...mm.filter((v) => v != null)];
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+  const pw = W - PR, x = (i) => i / Math.max(1, k - 1) * pw, y = (v) => PT + (hi - v) / (hi - lo) * (H - PT - PB);
+  const path = (arr) => { let p = ""; arr.forEach((v, i) => { if (v != null) p += (p ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }); return p; };
+  let g = ""; for (const t of niceTicks(lo, hi, 3)) g += `<line x1="0" x2="${pw}" y1="${y(t)}" y2="${y(t)}"/><text x="${W - 4}" y="${y(t) + 4}" text-anchor="end">${fmtInt(t)}</text>`;
+  let xl = ""; const every = Math.max(1, Math.round(k / 5)); ls.forEach((l, i) => { if (i % every === 0) xl += `<text x="${x(i)}" y="${H - 4}" text-anchor="middle">${dayStr(l)}</text>`; });
+  const up = ys[ys.length - 1] >= ys[0], col = up ? "var(--up)" : "var(--down)";
+  const hiI = ys.indexOf(Math.max(...ys)), loI = ys.indexOf(Math.min(...ys));
+  const p = path(ys), area = `${p}L${x(k - 1).toFixed(1)} ${H - PB}L0 ${H - PB}Z`;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs><linearGradient id="txg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <g class="grid axis">${g}${xl}</g><path d="${area}" fill="url(#txg)"/>
+    <path d="${path(mm)}" fill="none" stroke="var(--brass)" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <path d="${p}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle cx="${x(hiI)}" cy="${y(ys[hiI])}" r="3.5" fill="${col}"/><text class="txlab" x="${Math.min(pw - 4, Math.max(4, x(hiI)))}" y="${y(ys[hiI]) - 7}" text-anchor="${x(hiI) > pw * 0.8 ? "end" : x(hiI) < pw * 0.2 ? "start" : "middle"}">最高 ${pt(ys[hiI])}</text>
+    <circle cx="${x(loI)}" cy="${y(ys[loI])}" r="3.5" fill="${col}"/><text class="txlab" x="${Math.min(pw - 4, Math.max(4, x(loI)))}" y="${y(ys[loI]) + 15}" text-anchor="${x(loI) > pw * 0.8 ? "end" : x(loI) < pw * 0.2 ? "start" : "middle"}">最低 ${pt(ys[loI])}</text>
+    <circle class="dot" r="5" fill="${col}" stroke="var(--surface)" stroke-width="2" opacity="0"/><rect class="hit" x="0" y="0" width="${pw}" height="${H}" fill="transparent"/></svg>`;
+  const svg = $("svg", box), dot = $(".dot", box), hit = $(".hit", box);
+  const move = (ev) => {
+    const r = svg.getBoundingClientRect(); const px = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(k - 1, Math.round(px / pw * (k - 1))));
+    dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(ys[i])); dot.setAttribute("opacity", 1);
+    const ch = i > 0 ? ys[i] / ys[i - 1] - 1 : null;
+    tipAt(box, `${dayFull(ls[i])}<br><b>${fmtPx(ys[i])}</b>${ch != null ? ` <span class="${cls(ch)}">${ch > 0 ? "+" : ""}${(ch * 100).toFixed(1)}%</span>` : ""}${mm[i] != null ? `<br><span class="note">20 日均線 ${pt(mm[i])}</span>` : ""}`, x(i) * r.width / W, y(ys[i]) * r.height / H - 30);
+  };
+  hit.addEventListener("mousemove", move); hit.addEventListener("touchmove", move, { passive: true });
+  hit.addEventListener("mouseleave", () => { dot.setAttribute("opacity", 0); hideTip(box); });
+  const chg = ys[ys.length - 1] / ys[0] - 1, last = ys[ys.length - 1], m = mm[mm.length - 1];
+  const t = { 20: "1 個月", 60: "3 個月", 120: "6 個月" }[n] || "";
+  $("#txsum").innerHTML = `最近 ${t}：從 ${pt(ys[0])} 到 <b>${pt(last)}</b>，<span class="${cls(chg)}">${chg > 0 ? "漲" : "跌"} ${Math.abs(chg * 100).toFixed(1)}%</span>。${m != null ? `現在在 20 日均線${last >= m ? "<b>上面</b>（最近偏強）" : "<b>下面</b>（最近偏弱）"}。` : ""}`;
+}
+// 把卡片收成一行：標題＋一句重點，點開看完整內容（內容不刪減）
+function foldCard(id, title, badge, gist, inner) {
+  if (!inner) return "";
+  const open = (store.get("fold", {}) || {})[id];
+  return `<details class="card section xfold" id="f-${id}" ${open ? "open" : ""}><summary><span class="xf-t">${title}</span>${badge || ""}<span class="xf-g">${esc(gist || "")}</span><span class="xf-c">看細節</span></summary><div class="xf-b">${inner}</div></details>`;
+}
+function wireHome(M) {
+  drawTaiex(M, store.get("txN", 60));
+  onResize(() => drawTaiex(M, store.get("txN", 60)));
+  const sg = $("#txseg");
+  if (sg) sg.addEventListener("click", (e) => { const b = e.target.closest("[data-n]"); if (!b) return; store.set("txN", +b.dataset.n); $$("#txseg button").forEach((x) => x.classList.toggle("on", x === b)); drawTaiex(M, +b.dataset.n); });
+  $$("[data-open]").forEach((b) => b.addEventListener("click", () => {
+    const id = b.dataset.open;
+    const el = id === "list" ? $("#hside") : $("#f-" + id);
+    if (!el) return;
+    if (el.tagName === "DETAILS") el.open = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  $$("details.xfold").forEach((d) => d.addEventListener("toggle", () => { const f = store.get("fold", {}) || {}; f[d.id.slice(2)] = d.open; store.set("fold", f); }));
+  const gd = $("#guideDone"), gc = $("details.xguide");
+  if (gd) gd.addEventListener("click", () => { store.set("guideDone", true); gc.open = false; });
+  if (gc) gc.addEventListener("toggle", () => { const c = $(".xf-c", gc); if (c) c.textContent = gc.open ? "收起" : "展開"; });
 }
 function indBars(ind, n) {
   const arr = [...ind].sort((a, b) => b.s[S.hz] - a.s[S.hz]).slice(0, n);
@@ -1884,6 +2082,7 @@ async function vHelp(tok) {
       <li><span><b>看評價：</b>首頁「今天的評價」列出看好與看淡的股票；點進股票，最上面有一句話告訴你該怎麼看。</span></li>
       <li><span><b>看準確度再決定：</b>每個評價旁都寫了「過去照做有幾成跑贏大盤」。不到一半就只是參考，不要重押；買賣前也要想好最多願意賠多少。</span></li>
     </ol></section>
+  <a class="card checklink section" href="#/learn">${svgI("learn")}<span><b>投資小教室：${(window.LEARN || []).reduce((a, c) => a + c.terms.length, 0)} 個名詞，分 7 課由淺到深</b><span class="note">一句話重點＋白話說明＋例子，看不懂的字都可以在這裡查</span></span><span class="more">去看看</span></a>
   <section class="card section"><h2>名詞解釋</h2>
     <ul class="facts gloss">
       <li><span>${rTag("B")} 過去照這個評價買，最近 60 天至少 55% 的時候跑贏大盤（60% 以上算合格）。</span></li>
