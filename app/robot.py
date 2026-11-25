@@ -96,6 +96,10 @@ def _dt_open(o, s, t):
         return (op, "09:00"), None
     if _limit_dn(op, ref) or (not isnan(ref) and op < ref):
         return None, "開盤在平盤以下，不能先賣"
+    if _limit_up(op, ref):
+        # 2026-11-25 起（法規與實際可行性）：開盤就漲停，收盤常常鎖住漲停買不回；
+        # 現股當沖先賣後買不回會違約交割（限空令期間也不能改列融券），所以不先賣
+        return None, "開盤就漲停，可能整天鎖住買不回，不先賣"
     return (op, "09:00"), None
 
 
@@ -107,6 +111,8 @@ def _dt_intra(o, s, t, backup):
     if o["side"] == "B":       # 只有備選會在盤中買：限開盤價，盤中跌破開盤價才成交
         if backup and not _limit_up(op, ref) and lo < op:
             return op, "盤中（跌回開盤價）"
+        return None
+    if _limit_up(op, ref):     # 開盤就漲停不先賣（同 _dt_open）
         return None
     P = max(op, ref) if backup else ref
     if hi > P:

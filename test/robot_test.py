@@ -124,5 +124,14 @@ for tr in out["acct"]["st"]["trades"]:
     if "提早" in tr["exit_why"] and gap >= robot.ST_H:
         print("提早賣出天數錯誤", tr)
         ok = False
+# 先賣後買：開盤就漲停不先賣（開盤與盤中都不成交）
+_s = {"o": [11.0], "c": [11.0], "ref": [10.0], "h": [11.0], "l": [11.0]}
+if robot._dt_open({"side": "S"}, _s, 0)[0] or robot._dt_intra({"side": "S"}, _s, 0, False) or robot._dt_intra({"side": "S"}, _s, 0, True):
+    print("開盤漲停不應先賣")
+    ok = False
+_s2 = {"o": [10.5], "c": [10.2], "ref": [10.0], "h": [10.8], "l": [10.1]}
+if not robot._dt_open({"side": "S"}, _s2, 0)[0]:
+    print("開在平盤以上、沒漲停應可先賣")
+    ok = False
 print("PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)

@@ -93,6 +93,7 @@ const GLOSS = {
   brief: "今日盤勢：開盤前的一句話預測與建議。方向來自隔夜美股（台積電 ADR 與費城半導體的平均漲跌）：2005 年起每天只用當時已知的資料估計台股當天收紅的機率，實測猜對約 6 成多，比一律猜漲準。再加上大跌風險等級，依事先定好的規則給建議。下午收盤後美股還沒開，所以只會先顯示風險，早上 7:35 左右才更新方向。這是統計參考，不是投資建議。",
   situ: "國內外情勢：國際（美股恐慌指數、美債利率、美元、油價、費城半導體、依國際新聞計算的地緣政治風險與美國經濟政策不確定指數）、國內（國發會景氣燈號、新台幣、台灣的地緣政治風險）與政治經濟新聞的主題熱度。每一項和過去一年（新聞指數是三年）比較，偏高或偏低時依常理標示偏有利或偏不利。2005 年以來的檢驗顯示這些情勢對之後大盤漲跌的預測力很弱，所以只用來了解背景，不拿來猜方向。",
   risk: "大跌風險：估計加權指數「5 個交易日內最低收盤比今天低 4% 以上」與「下個交易日跌 2% 以上」的機率。依據是加權指數 2000 年以來的每日收盤：近一個月波動、波動是否突然變大、離近 3 個月高點多遠、離季線多遠、最近幾天的漲跌；早上 7:35 美股收盤後，再加上隔夜的台積電 ADR 與費城半導體。每天只用當時已知的資料重新估計（walk-forward）。等級是今天的機率在過去二十年中的位置：後 50% 低、50%～75% 正常、75%～90% 偏高、前 10% 高。這是在估「風險有多大」，不是預測「會不會跌」：高風險的日子隔天平均漲跌接近 0，只是上下震盪變大；突然的消息（例如國際突發事件）在發生前通常看不出來。",
+  events: "法規與重大消息：金管會、證交所、行政院的救市與交易規則（例如限空令、融資維持率），以及會帶動整個市場的重大消息（例如黃仁勳請辭、回任）。事件內容由每天盤後調校時依新聞整理，附上來源；「最近幾天的相關新聞」是自動從新聞標題找出來的，可能還沒整理進來。歷次限空令之後加權指數的走勢，用 2000 年起的加權指數日線自己計算（只有 5 次，每次原因不同，只當參考）。評價是用過去的價格、籌碼、財報算的，看不懂消息本身；重大消息帶動的行情裡，短期評價特別容易失準，所以會在這裡提醒。",
   crash: "大跌之後：加權指數最近 60 個交易日內出現「5 個交易日跌 10% 以上」或「20 個交易日跌 20% 以上」的急跌時才顯示。歷史數字來自 9 個市場（台灣、美國 S&P 500、那斯達克、日經、恆生、韓國、費城半導體、德國、英國）1927 年以來的日線：找出同級急跌，不同市場 45 天內同時發生算同一波，依「急跌前一年漲幅是否 30% 以上」分組，看之後一年怎麼走，並比較抱住、賣出等站回均線再買、賣一半、新資金一次買或分批的結果。定義與比較方式都在看結果前決定。指數不含股利、現金不計利息。這是歷史統計，不是預測，也不構成投資建議。",
   mktfc: "大盤預測：上漲機率由大盤模型的讀數和「歷史上漲比例」依模型最近準不準混合而來；歷史上漲比例以最近一年為主，再向加權指數二十多年來的長期比例收斂（只看最近一年會被大多頭或大空頭帶偏）。點數範圍：把過去二十多年每一段同樣長度的漲跌，依當時的波動大小換算成同一把尺，再乘上目前的波動大小，並調整到和上漲機率一致；「8 成機會落在」代表 10 次約有 8 次會在這個範圍內。期間內高點、低點看的是這段期間收盤價的最高與最低。都是統計推估，不保證。",
   paperpos: "未實現損益＝現在用現價賣掉、扣掉手續費和證交稅之後，比買進成本（含買進手續費）多或少多少。停損／停利：成交價碰到你設定的價格，就自動以當下的買一價送出賣單（之後一樣要排隊才成交）。",
@@ -651,6 +652,7 @@ async function vHome(tok) {
   ${briefCard(SI)}
   ${riskCard(M.risk, LV)}
   ${crashCard(M.crash)}
+  ${eventsCard(M.events)}
   ${guideCard(RC, cnt)}
   <section class="card section"><div class="card-h"><h2>三個期間的評價與準確度</h2>${help("recrule")}<a class="more" href="#/check">過去成績</a></div><div class="grid g3 rsum">${HZ.map((h, i) => {
     const x = (RC && RC.h[h]) || {}, on = x.active && x.sides && x.sides.length;
@@ -1723,6 +1725,33 @@ function crashCard(C) {
     <p class="note" style="margin:8px 0 0">限制：同級的急跌在歷史上不多（每組幾十波甚至只有 10 波），這是「過去大致怎麼走」，不是預測這次；不構成投資建議。</p>
   </section>`;
 }
+// 法規與重大消息（app/events.py；事件庫 app/events.json）
+function eventsCard(E) {
+  if (!E || !(E.events || []).length) return "";
+  const P1 = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+  const md = (d) => `${+d.slice(4, 6)}/${+d.slice(6)}`;
+  const ymd = (d) => `${d.slice(0, 4)}/${+d.slice(4, 6)}/${+d.slice(6)}`;
+  const on = E.events.filter((e) => e.active), off = E.events.filter((e) => !e.active);
+  const row = (e) => `<li class="ev1"><span class="evk ${e.kind === "rule" ? "evr" : "evn"}">${e.kind === "rule" ? "法規" : "消息"}</span>
+      <div><b>${esc(e.title)}</b> <span class="note">${md(e.start)} 起${e.end ? `～${md(e.end)}` : ""}・當天加權指數 <span class="${cls(e.day_ret)}">${P1(e.day_ret)}</span></span>
+      <p class="note evw">${esc(e.what)}${(e.src || []).length ? `（來源：${e.src.map((x) => `<a href="${esc(x[1])}" target="_blank" rel="noopener">${esc(x[0])}</a>`).join("、")}）` : ""}</p></div></li>`;
+  const L = E.lesson || {}, hs = E.hist_sum || {}, B = E.ban;
+  const hist = (E.hist || []).map((h) => `<tr><td>${ymd(h.d)}</td><td class="evn1" title="${esc(h.what || "")}">${esc(h.name)}</td><td class="num ${cls(h.f5)}">${P1(h.f5)}</td><td class="num ${cls(h.f20)}">${P1(h.f20)}</td><td class="num ${cls(h.f60)}">${P1(h.f60)}</td></tr>`).join("");
+  const det = (E.detect || []).map((x) => `<li><span class="note">${md(x.d)}</span> ${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.t)}</a>` : esc(x.t)}</li>`).join("");
+  return `<section class="card section evcard"><div class="card-h"><h2>${svgI("fut")} 法規與重大消息</h2>${E.caution ? `<span class="rk rk2">影響中</span>` : ""}${help("events")}</div>
+    <ul class="evlist">${on.slice(0, 3).map(row).join("")}</ul>
+    ${on.length > 3 ? `<details class="fold"><summary class="note">其他還有效的措施（${on.length - 3}）</summary><ul class="evlist">${on.slice(3).map(row).join("")}</ul></details>` : ""}
+    ${E.caution ? `<div class="evtip"><b>對你的意思</b><ul>
+      ${B ? `<li>限空令期間（${md(B.start)} 起分三波加碼${B.full ? `，${md(B.full)} 起全面` : ""}）不能在平盤以下融券、借券放空；現股當沖「先賣」一定要當天買回，買不回會違約交割。機器人當沖遇到開盤就漲停的股票不先賣。</li>` : ""}
+      <li>評價看不懂消息本身。這波重大消息行情裡（${md("20261109")}～${md(L.asof || E.day)}，${L.days || "—"} 天）短期排名前段只有 ${pctTxt(L.short_top)} 跑贏加權指數（平常約 ${pctTxt(L.short_norm)}），<b>短期評價參考價值較低</b>；中長期評價與準確度把關照常。</li>
+      <li>消息帶動的單日大漲大跌，隔幾天常有反向震盪；單筆金額縮小、不要追漲停。</li></ul></div>` : ""}
+    ${off.length ? `<details class="fold"><summary class="note">最近結束的事件（${off.length}）</summary><ul class="evlist">${off.map(row).join("")}</ul></details>` : ""}
+    ${hist ? `<details class="fold"><summary class="note">歷次限空令之後加權指數怎麼走（${hs.n || 0} 次）</summary>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>開始</th><th>原因</th><th>5 天後</th><th>20 天後</th><th>60 天後</th></tr></thead><tbody>${hist}</tbody></table></div>
+      <p class="note">從開始前一天收盤算。${hs.n ? `${hs.n} 次中 ${hs.up60} 次 60 天後比較高（平均 ${P1(hs.avg60)}）` : ""}${B && B.since != null ? `；這次從 ${md(B.start)} 前一天到現在 ${P1(B.since)}` : ""}。只有 ${hs.n || 0} 次、原因各不同（2008 年仍再跌兩成），限空令本身不保證止跌。</p></details>` : ""}
+    ${det ? `<details class="fold"><summary class="note">最近幾天的相關新聞（自動找出，可能還沒整理進上面）</summary><ul class="evdet">${det}</ul></details>` : ""}
+  </section>`;
+}
 function mktCard(L, MD) {
   const M = L.market, MC = (MD && MD.market_check) || {};
   if (!HZ.some((h) => M.horizons[h] && M.horizons[h].fc)) return "";
@@ -2353,7 +2382,7 @@ async function vRobot(tok) {
   <details class="card more-info section"><summary>機器人怎麼下單</summary>
     <ul>
       <li><b>當沖帳戶：</b>每天收盤後看「當沖」頁，只挑標示「推薦」的股票（過去條件相近的股票扣掉成本後，賺錢的機會超過一半、平均是賺的），依勝算排序：前 5 檔是<b>主單</b>（每檔約總資產的 1/5），後面最多 5 檔是<b>備選</b>。一律收盤價出場（賣出或買回）。沒有推薦的股票就整天空手。</li>
-      <li><b>開盤前先預估、開盤後再調整：</b>開盤前只知道昨天的資料，所以先排好主單和備選。主單「先買」用開盤價買（開盤就漲停就放棄）；「先賣」掛平盤價——開在平盤以上就用開盤價成交，開低就繼續掛著，盤中漲回平盤以上才成交。開盤後看到開盤價，主單有幾檔沒成交，就依序改下幾檔備選：備選買進限開盤價（盤中跌破開盤價才成交）、先賣限開盤價且不低於平盤（盤中漲過才成交）。短線帳戶也有備選：主單在下單時刻漲停買不到，就改買下一檔。</li>
+      <li><b>開盤前先預估、開盤後再調整：</b>開盤前只知道昨天的資料，所以先排好主單和備選。主單「先買」用開盤價買（開盤就漲停就放棄）；「先賣」掛平盤價——開在平盤以上就用開盤價成交，開低就繼續掛著，盤中漲回平盤以上才成交；開盤就漲停的不先賣（2026/11/25 起：漲停鎖住常常買不回，現股當沖買不回會違約交割，限空令期間也不能改成融券）。開盤後看到開盤價，主單有幾檔沒成交，就依序改下幾檔備選：備選買進限開盤價（盤中跌破開盤價才成交）、先賣限開盤價且不低於平盤（盤中漲過才成交）。短線帳戶也有備選：主單在下單時刻漲停買不到，就改買下一檔。</li>
       <li><b>短線帳戶：</b>每天收盤後依短線評價挑最多 5 檔還沒持有的（建議買優先，其次相對看好；同一級依跑贏大盤機率排序），每檔約總資產的 1/25，所以大約有 5 批輪流持有。買賣時機依「買賣時機」的實測結果自動選（目前是 <b>${KT[tm[0]]}買進、第 5 個交易日${KT[tm[1]]}賣出</b>）。持有中的股票短線評價變成「建議賣」，下一個交易日開盤提早賣出。</li>
       <li><b>公平：</b>委託（含備選和開盤後怎麼換的規則）在收盤後決定、存檔，隔天開盤後就不再更改；如果雲端更新延遲到開盤後（收盤價委託是 13:00 後）才產生委託，就算沒來得及下單，不會用事後的資料補單。</li>
       <li><b>成交：</b>開盤價、收盤價用集合競價的價格撮合；盤中的限價單只看當天最高、最低價，價格要「超過」限價才算成交（等於有排隊），成交價就是限價。開盤或收盤就漲停買不到、跌停賣不掉；先賣一律不低於平盤價。以「股」為單位（不足一張以零股計），不融資、不融券。</li>

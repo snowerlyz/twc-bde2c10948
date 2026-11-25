@@ -780,3 +780,15 @@ ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--
 .crashcard .tbl { margin-top: 8px; }
 .pwarn { color: #e07a35; }
 @media (max-width: 640px) { .crashcard .crkv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* 法規與重大消息 */
+.evcard .evlist { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
+.evcard .ev1 { display: flex; gap: 10px; align-items: flex-start; }
+.evcard .evk { flex: none; font-size: .78rem; padding: 1px 7px; border-radius: 6px; margin-top: 2px; border: 1px solid var(--line); }
+.evcard .evr { color: #fff; background: #4a6fd9; border-color: transparent; }
+.evcard .evn { color: #fff; background: #8a5ad9; border-color: transparent; }
+.evcard .evw { margin: 2px 0 0; line-height: 1.6; }
+.evcard .evtip { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, #f0a64a 12%, transparent); }
+.evcard .evtip ul { margin: 6px 0 0; padding-left: 1.2em; display: grid; gap: 4px; line-height: 1.6; }
+.evcard .evdet { margin: 6px 0 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: .92rem; }
+.evcard td.evn1 { text-align: left; }

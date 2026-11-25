@@ -175,6 +175,14 @@ def analyze(prog=None):
         crash_out = _cr.build(D)
     except Exception as e:
         log("大跌之後失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 法規與重大消息（限空令、重大企業消息等；事件庫 app/events.json）
+    events_out = None
+    try:
+        import events as _ev
+        importlib.reload(_ev)
+        events_out = _ev.build(D)
+    except Exception as e:
+        log("法規與重大消息失敗：%s\n%s" % (e, traceback.format_exc()))
     # 國內外情勢與今日盤勢一句話（開盤前依隔夜美股與大跌風險）
     try:
         import situ as _si
@@ -268,7 +276,7 @@ def analyze(prog=None):
     latest = {
         "day": D.days[-1], "days": D.T, "first_day": D.days[0],
         "generated": now_tw().strftime("%Y-%m-%d %H:%M"),
-        "market": dict({k: v for k, v in mkt.items() if k != "check"}, risk=risk_out, crash=crash_out),
+        "market": dict({k: v for k, v in mkt.items() if k != "check"}, risk=risk_out, crash=crash_out, events=events_out),
         "industries": res["industries"],
         "stocks": stocks,
         "model": {hn: {k: res["model"]["horizons"][hn][k] for k in ("label", "top_hit", "base_hit", "spread_avg", "spread_win", "eval_days", "ic_avg", "rel")}
