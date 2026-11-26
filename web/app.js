@@ -119,7 +119,8 @@ document.addEventListener("click", (e) => {
     const t = TERM[b.dataset.term];
     if (!t) return;
     p.classList.add("tpop");
-    p.innerHTML = `<b>${esc(t.n)}</b><p class="tp-s">${esc(t.s)}</p>${t.b ? `<p>${esc(t.b)}</p>` : ""}<a href="#/learn/${t.id}">到投資小教室看例子 →</a>`;
+    const site = (TERM._ch[t.id] || {}).kind === "site";
+    p.innerHTML = `<span class="tp-k ${site ? "site" : ""}">${site ? "台股羅盤用法" : "股市知識"}</span><b>${esc(t.n)}</b><p class="tp-s">${esc(t.s)}</p>${t.b ? `<p>${esc(t.b)}</p>` : ""}<a href="${site ? "#/help/" : "#/learn/"}${t.id}">${site ? "到使用說明看完整 →" : "到投資小教室看例子 →"}</a>`;
   } else p.textContent = GLOSS[b.dataset.help] || "";
   document.body.appendChild(p);
   const r = b.getBoundingClientRect();
@@ -132,7 +133,8 @@ document.addEventListener("click", (e) => {
 // ====================================================================== 名詞自動加說明（投資小教室 web/learn.js）
 const TERM = {}, TERM_RE = (() => {
   const words = [];
-  for (const ch of (window.LEARN || [])) for (const t of ch.terms) { t.ch = ch.id; TERM[t.id] = t; for (const a of t.a || []) words.push([a, t.id]); }
+  TERM._ch = {};
+  for (const ch of (window.LEARN || [])) for (const t of ch.terms) { t.ch = ch.id; TERM[t.id] = t; TERM._ch[t.id] = ch; for (const a of t.a || []) words.push([a, t.id]); }
   words.sort((x, y) => y[0].length - x[0].length);
   TERM._by = Object.fromEntries(words);
   return words.length ? new RegExp(words.map(([w]) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g") : null;
@@ -165,15 +167,18 @@ function termify(root) {
     if (frag) { frag.appendChild(document.createTextNode(txt.slice(last))); n.replaceWith(frag); }
   }
 }
-// ====================================================================== 投資小教室
+// ====================================================================== 投資小教室（股市知識）／使用說明（網站用法）共用的名詞元件
+function learnTerm(t, done) {
+  const btn = done ? `<button class="btn sm" type="button" data-learned="${t.id}">${done.has(t.id) ? "已經懂了 ✓（點一下取消）" : "我看懂了"}</button>` : "";
+  return `<details class="lterm" id="t-${t.id}" data-q="${esc([t.n, t.s, t.b || "", (t.a || []).join(" ")].join(" "))}"><summary>${done ? `<span class="lck ${done.has(t.id) ? "on" : ""}" aria-hidden="true">✓</span>` : '<span class="lck site" aria-hidden="true">i</span>'}<b>${esc(t.n)}</b><span class="ls">${esc(t.s)}</span></summary>
+    <div class="lbody">${t.b ? `<p>${esc(t.b)}</p>` : ""}${t.e ? `<p class="lex"><b>例子</b>${esc(t.e)}</p>` : ""}${t.w ? `<p class="note">在網站哪裡看到：<a href="${t.w[1]}">${esc(t.w[0])}</a></p>` : ""}${btn}</div></details>`;
+}
 function vLearn(tok, arg) {
-  const L = window.LEARN || [], done = new Set(store.get("learned", []) || []);
+  const L = (window.LEARN || []).filter((c) => c.kind !== "site"), done = new Set(store.get("learned", []) || []);
   const total = L.reduce((a, c) => a + c.terms.length, 0);
-  const term = (t) => `<details class="lterm" id="t-${t.id}" data-q="${esc([t.n, t.s, t.b || "", (t.a || []).join(" ")].join(" "))}"><summary><span class="lck ${done.has(t.id) ? "on" : ""}" aria-hidden="true">✓</span><b>${esc(t.n)}</b><span class="ls">${esc(t.s)}</span></summary>
-    <div class="lbody">${t.b ? `<p>${esc(t.b)}</p>` : ""}${t.e ? `<p class="lex"><b>例子</b>${esc(t.e)}</p>` : ""}${t.w ? `<p class="note">在台股羅盤哪裡看到：<a href="${t.w[1]}">${esc(t.w[0])}</a></p>` : ""}
-    <button class="btn sm" type="button" data-learned="${t.id}">${done.has(t.id) ? "已經懂了 ✓（點一下取消）" : "我看懂了"}</button></div></details>`;
+  const term = (t) => learnTerm(t, done);
   view.innerHTML = `<div class="learn"><h1 class="grad">投資小教室</h1>
-  <p class="lead">完全不懂股票也沒關係。照順序讀 7 課，每課大約 5 分鐘；每個名詞都有「一句話重點、白話說明、例子」。在其他頁面看到<span class="term term-demo">虛線的字</span>，點一下也會跳出說明。</p>
+  <p class="lead">這裡只講<b>股票本身的知識</b>，不管你用什麼看盤軟體都適用。完全不懂也沒關係：照順序讀 ${L.length} 課，每課大約 5 分鐘，每個名詞都有「一句話重點、白話說明、例子」。<br><span class="note">台股羅盤的評價、準確度、機器人怎麼看，放在<a href="#/help">使用說明</a>。</span></p>
   <section class="card section lhead"><div class="lprog"><span>學習進度</span><b class="num" id="lcount">${done.size} / ${total}</b><div class="lbar"><i id="lbar" style="width:${total ? done.size / total * 100 : 0}%"></i></div></div>
     <input class="lsearch" id="lq" type="search" placeholder="找名詞，例如：融資、跑贏大盤、限空令" autocomplete="off">
     <div class="lchips">${L.map((c, k) => `<a href="#/learn/${c.id}" data-ch="${c.id}">${k + 1}. ${esc(c.t.replace(/^第 \d 課　/, ""))}</a>`).join("")}</div></section>
@@ -701,14 +706,14 @@ async function route() {
     else if (page === "menu") vMenu();
     else if (page === "robot") await vRobot(tok);
     else if (page === "paper") await vPaper(tok, decodeURIComponent(arg || ""));
-    else if (page === "help") await vHelp(tok);
+    else if (page === "help") await vHelp(tok, decodeURIComponent(arg || ""));
     else if (page === "learn") vLearn(tok, decodeURIComponent(arg || ""));
     else await vHome(tok);
   } catch (e) {
     console.error(e);
     if (tok === routeToken) view.innerHTML = `<div class="card empty"><h2>這一頁暫時無法顯示</h2><p>${esc(e.message === "notfound" ? "找不到這檔股票的分析，可能是剛上市、已下市，或平常幾乎沒人買賣。" : "讀取資料時發生問題：" + e.message)}</p><a class="btn" href="#/">回到總覽</a></div>`;
   }
-  if (tok === routeToken) { FX.enhance(view); if (page !== "learn") termify(view); if (!location.hash.startsWith("#/stock/") && !(page === "learn" && arg)) scrollTo(0, 0); }
+  if (tok === routeToken) { FX.enhance(view); if (page !== "learn") termify(view); if (!location.hash.startsWith("#/stock/") && !((page === "learn" || page === "help") && arg)) scrollTo(0, 0); }
 }
 addEventListener("hashchange", route);
 
@@ -746,7 +751,7 @@ async function vHome(tok) {
   const P0 = (v) => v == null ? "—" : Math.round(v * 100) + "%";
   view.innerHTML = `
   <h1 class="grad">今天的評價</h1>
-  <p class="lead">${dayFull(L.day)} 收盤後更新。先看「今天重點」，想知道更多再往下點開。看到<span class="term term-demo">虛線的字</span>點一下就有解釋，也可以到<a href="#/learn">投資小教室</a>從頭學。</p>
+  <p class="lead">${dayFull(L.day)} 收盤後更新。先看「今天重點」，想知道更多再往下點開。看到<span class="term term-demo">虛線的字</span>點一下就有解釋，也可以到<a href="#/learn">投資小教室</a>學股票基本知識、到<a href="#/help">使用說明</a>看這個網站怎麼用。</p>
   ${todayCard(L, RC, cnt, SI, evOn)}
   ${taiexCard(M)}
   ${guideCard(RC, cnt)}
@@ -2070,32 +2075,33 @@ function recBanner(rec, h) {
 }
 
 // ====================================================================== 說明
-async function vHelp(tok) {
+async function vHelp(tok, arg) {
   let st = S.status || {};
   try { st = await api("status", { fresh: true }); } catch { }
   if (tok !== routeToken) return;
   const lan = (st.lan || []).map((ip) => `http://${ip}:${st.port || 8787}`);
+  const SITE = (window.LEARN || []).filter((c) => c.kind === "site");
+  const KN = (window.LEARN || []).filter((c) => c.kind !== "site");
   view.innerHTML = `<h1>使用說明</h1>
+  <p class="lead">這裡只說明<b>台股羅盤怎麼用</b>、各個數字怎麼看。<b>股票本身的知識</b>（大盤、融資、停損、手續費…）放在<a href="#/learn">投資小教室</a>，兩邊分開，不混在一起。</p>
   <section class="card section guide"><h2>新手 3 步驟</h2>
     <ol class="steps">
       <li><span><b>決定要放多久：</b>約一週看「短期」、約一個月看「中期」、約三個月看「長期」，在最上面切換。</span></li>
       <li><span><b>看評價：</b>首頁「今天的評價」列出看好與看淡的股票；點進股票，最上面有一句話告訴你該怎麼看。</span></li>
       <li><span><b>看準確度再決定：</b>每個評價旁都寫了「過去照做有幾成跑贏大盤」。不到一半就只是參考，不要重押；買賣前也要想好最多願意賠多少。</span></li>
     </ol></section>
-  <a class="card checklink section" href="#/learn">${svgI("learn")}<span><b>投資小教室：${(window.LEARN || []).reduce((a, c) => a + c.terms.length, 0)} 個名詞，分 7 課由淺到深</b><span class="note">一句話重點＋白話說明＋例子，看不懂的字都可以在這裡查</span></span><span class="more">去看看</span></a>
-  <section class="card section"><h2>名詞解釋</h2>
+  <section class="card section"><h2>評價的五種標示</h2>
     <ul class="facts gloss">
       <li><span>${rTag("B")} 過去照這個評價買，最近 60 天至少 55% 的時候跑贏大盤（60% 以上算合格）。</span></li>
       <li><span>${rTag("b")} 比大多數股票好，但準確度還沒到 55%，只是「比較好的一批」。</span></li>
       <li><span>${rTag("N")} 看不出明顯好壞；成交太少或被限制交易（處置股）的股票也一律中立。</span></li>
       <li><span>${rTag("s")}／${rTag("S")} 和上面相反：比較可能跑輸大盤。「建議賣」是手上有可考慮賣掉、沒有就別買；不是叫你放空。</span></li>
-      <li><span><b>大盤／加權指數：</b>全部上市股票加總的指數，台積電等大公司占很大比重，所以一般股票能跑贏它的機會本來就不到一半。</span></li>
       <li><span><b>跑贏大盤機率：</b>這檔股票之後漲得比加權指數多（或跌得比它少）的機會。旁邊的「一般股票」是隨便挑一檔的機會，用來比較。</span></li>
       <li><span><b>預期比大盤：</b>條件相近的股票，之後比加權指數多賺（正數）或少賺（負數）多少，取中間值。</span></li>
       <li><span><b>停損參考／目標參考：</b>過去條件相近的股票，大約 2 成會跌破、2 成會漲過的價位。跌破停損參考時，代表和預期不同，可以考慮出場。</span></li>
-      <li><span><b>一張／零股：</b>台股一張是 1,000 股；錢不夠時可以只買幾股（零股）。</span></li>
-      <li><span><b>紅色／綠色：</b>台股習慣紅色是漲、綠色是跌。</span></li>
     </ul></section>
+  ${SITE.map((c) => `<section class="card section lchap" id="${c.id}"><div class="card-h"><h2>名詞說明：${esc(c.t)}</h2></div>${c.terms.map((t) => learnTerm(t)).join("")}</section>`).join("")}
+  <a class="card checklink section" href="#/learn">${svgI("learn")}<span><b>想先弄懂股票本身？到投資小教室</b><span class="note">${KN.length} 課、${KN.reduce((n, c) => n + c.terms.length, 0)} 個名詞，只講股市知識，不講這個網站</span></span><span class="more">去看看</span></a>
   <div class="grid g2">
     <section class="card"><h2>分數怎麼看</h2>
       <p>每檔股票有三個分數，分別預測不同長度的未來：<b>短期＝1 週</b>（約 5 個交易日）、<b>中期＝1 個月</b>（約 20 個交易日）、<b>長期＝3 個月</b>（約 60 個交易日）。分數 0～100，50 分代表看不出方向。</p>
@@ -2130,6 +2136,7 @@ async function vHelp(tok) {
     <p>看漲買「認購」、看跌買「認售」。推薦度同時看兩件事：一是權證本身划不划算（價格貴不貴、買賣價差、剩幾天到期、每天耗損多少、槓桿大小），二是股票本身看漲還是看跌。表格每一欄旁邊的 <span class="help" style="cursor:default">?</span> 都有白話解釋。</p>
   </section>
   ${disclaimer}`;
+  if (arg && TERM[arg]) { const el = $("#t-" + arg); if (el) { el.open = true; setTimeout(() => el.scrollIntoView({ block: "start" }), 30); } }
 }
 
 // ====================================================================== 第一次使用

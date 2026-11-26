@@ -868,3 +868,7 @@ details.lterm > summary b { font-size: 15.5px; white-space: nowrap; }
   .xf-b { padding: 0 14px 14px; }
   details.xfold > summary { padding: 14px; }
 }
+.tp-k { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 99px; margin-bottom: 6px; background: var(--brass-soft, rgba(230,183,92,.14)); color: var(--brass); font-weight: 700; }
+.tp-k.site { background: rgba(110, 160, 255, .14); color: var(--blue, #7aa7ff); }
+.tp-k + b { display: block; }
+.lck.site { color: var(--blue, #7aa7ff); border-color: var(--blue, #7aa7ff); font-weight: 700; font-style: italic; }
