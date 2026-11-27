@@ -325,6 +325,7 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
     by = {r["c"]: r for r in stocks}
     alerts = getattr(D, "alerts", {"disp": {}, "warn": {}})
     buys, sells, wbuys, wsells = [], [], [], []
+    _etf_rows(D, A_all, pct_hist, v20s, stocks, live, val20, alerts, res, out)
     for code, hs in per_stock.items():
         r = by.get(code)
         if not r or r.get("etf"):
@@ -373,6 +374,68 @@ def build(D, A_all, res, stocks, tuning=None, live=None):
     tun["acc_log"] = {k: lg[k] for k in sorted(lg)[-120:]}
     out["acc_log"] = tun["acc_log"]
     return out, tun
+
+
+def _etf_rows(D, A_all, pct_hist, v20s, stocks, live, val20, alerts, res, out):
+    """ETF 的類型、折溢價與評價（準確度和個股分開把關，見 etf.py）。失敗時不影響個股評價。"""
+    from util import log
+    try:
+        import etf as _etf
+    except Exception as e:
+        log("ETF 評價載入失敗：%s" % e)
+        return
+    try:
+        EO, eper = _etf.build(D, A_all, pct_hist, v20s, stocks, live)
+    except Exception as e:
+        import traceback
+        log("ETF 評價失敗：%s\n%s" % (e, traceback.format_exc()))
+        EO, eper = None, {}
+    try:
+        navs, navday = _etf.nav_info()
+    except Exception:
+        navs, navday = {}, None
+    lists = {hn: {"buy": [], "sell": [], "wbuy": [], "wsell": []} for hn in H}
+    cnt = {}
+    for r in stocks:
+        if not r.get("etf"):
+            continue
+        code = r["c"]
+        k, fg = _etf.kind(code, r.get("n"))
+        r["ek"] = k
+        if fg:
+            r["ef"] = 1
+        cnt[k] = cnt.get(k, 0) + 1
+        nv = navs.get(code)
+        if nv and nv.get("prem") is not None:
+            r["pm"] = nv["prem"]
+        hs = eper.get(code)
+        i = D.idx.get(code)
+        if not hs or i is None:
+            if k not in _etf.RATED:
+                r["rn"] = "%s ETF 不給評價" % k
+            continue
+        v20 = val20.get(i, 0)
+        rec = _combine(hs, r.get("px"), v20, code in alerts.get("disp", {}), r)
+        ok = "hs" in rec or rec["a"] != "觀望"
+        r["ra"] = "".join({"buy": "B", "sell": "S", "wbuy": "b", "wsell": "s"}.get(hs.get(hn, {}).get("a"), "N") if ok else "N"
+                          for hn in H)
+        r["rx"] = [hs.get(hn, {}).get("ex") for hn in H]
+        if not ok:
+            r["rn"] = rec.get("why")
+        rec["etf"] = True
+        res.setdefault("_recs", {})[code] = rec
+        for j, hn in enumerate(H):
+            a = r["ra"][j]
+            sd = {"B": "buy", "S": "sell", "b": "wbuy", "s": "wsell"}.get(a)
+            if sd:
+                lists[hn][sd].append({"c": code, "n": r.get("n"), "ek": k, "px": r.get("px"), "chg": r.get("chg"),
+                                  "val": r.get("val"), "pm": r.get("pm"), "p": hs[hn].get("p"), "ra": r["ra"], "s": r.get("s")})
+    for hn in lists:
+        for sd, xs in lists[hn].items():
+            xs.sort(key=lambda x: (x["p"] or 0) if sd in ("sell", "wsell") else -(x["p"] or 0))
+    if EO is not None:
+        EO.update(lists=lists, kinds=cnt, nav_day=navday, notes=_etf.KIND_NOTE, rated=list(_etf.RATED))
+        out["etf"] = EO
 
 
 TM_COST = 0.001425 * 2 * 0.6 + 0.003

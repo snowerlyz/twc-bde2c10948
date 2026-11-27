@@ -40,7 +40,9 @@ def save(D, res, stocks, dt, sectors=None, recs=None, risk=None):
         "score": {r["c"]: r["s"] for r in stocks if r.get("s")},
         "sec": {s["ind"]: s["s"] for s in (sectors or [])},
         # 每檔三個期間的評價（B 建議買／S 建議賣），只存非全中立的
-        "ra": {r["c"]: r["ra"] for r in stocks if r.get("ra") and r["ra"] != "NNN"},
+        "ra": {r["c"]: r["ra"] for r in stocks if r.get("ra") and r["ra"] != "NNN" and not r.get("etf")},
+        # ETF 的評價分開存（準確度和個股分開算）
+        "rae": {r["c"]: r["ra"] for r in stocks if r.get("ra") and r["ra"] != "NNN" and r.get("etf")},
         "rec": {"buy": [[r["c"], r["h"]] for r in (recs or {}).get("buys", [])],
                 "sell": [[r["c"], r["h"]] for r in (recs or {}).get("sells", [])]},
         "dt": {"long": [r["c"] for r in (dt or {}).get("long", []) if r.get("ok")],
@@ -120,6 +122,7 @@ def evaluate(D, A_all):
     recrows = {"buy": [], "sell": []}
     shrows = []
     rarows = {hn: {"buy": [], "sell": [], "wbuy": [], "wsell": []} for hn in H}
+    raerows = {hn: {"buy": [], "sell": [], "wbuy": [], "wsell": []} for hn in H}
     riskrows = []
     for d in files:
         t0 = pos.get(d)
@@ -172,7 +175,8 @@ def evaluate(D, A_all):
                     continue
                 recrows[side].append({"d": d, "hn": hn, "ex": (a1 / a0 - 1) - (tx[t0 + h] / tx[t0] - 1), "r": a1 / a0 - 1})
         # 每個期間的評價：到期後跑贏（建議買）／跑輸（建議賣）大盤的比例
-        for c, ra in (P.get("ra") or {}).items():
+        for c, ra, tgt in [(c, ra, rarows) for c, ra in (P.get("ra") or {}).items()] + \
+                [(c, ra, raerows) for c, ra in (P.get("rae") or {}).items()]:
             i = D.idx.get(c)
             if i is None:
                 continue
@@ -187,7 +191,7 @@ def evaluate(D, A_all):
                 ex = (a1 / a0 - 1) - (tx[t0 + h] / tx[t0] - 1)
                 side = {"B": "buy", "S": "sell", "b": "wbuy", "s": "wsell"}.get(a)
                 if side:
-                    rarows[hn][side].append({"d": d, "ex": ex, "today": t0 + h == last})
+                    tgt[hn][side].append({"d": d, "ex": ex, "today": t0 + h == last})
         if t0 + 1 <= last:
             for c, k in ((P.get("dt") or {}).get("sh") or []):
                 s = D.raw.get(c)
@@ -233,18 +237,19 @@ def evaluate(D, A_all):
         out["rec"][side] = {"n": len(rs), "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
                             "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,
                             "up": round(sum(1 for r in rs if r["r"] > 0) / len(rs), 4) if rs else None}
-    out["rh"] = {}
-    for hn in H:
-        out["rh"][hn] = {}
-        for side in ("buy", "sell", "wbuy", "wsell"):
-            rs = rarows[hn][side]
-            good = (lambda x: x > 0) if side in ("buy", "wbuy") else (lambda x: x < 0)
-            td = [r for r in rs if r["today"]]
-            out["rh"][hn][side] = {"n": len(rs), "days": len({r["d"] for r in rs}),
-                                   "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,
-                                   "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
-                                   "today_n": len(td),
-                                   "today": round(sum(1 for r in td if good(r["ex"])) / len(td), 4) if td else None}
+    for key, src in (("rh", rarows), ("rhe", raerows)):
+        out[key] = {}
+        for hn in H:
+            out[key][hn] = {}
+            for side in ("buy", "sell", "wbuy", "wsell"):
+                rs = src[hn][side]
+                good = (lambda x: x > 0) if side in ("buy", "wbuy") else (lambda x: x < 0)
+                td = [r for r in rs if r["today"]]
+                out[key][hn][side] = {"n": len(rs), "days": len({r["d"] for r in rs}),
+                                       "win": round(sum(1 for r in rs if good(r["ex"])) / len(rs), 4) if rs else None,
+                                       "ex": round(sum(r["ex"] for r in rs) / len(rs), 5) if rs else None,
+                                       "today_n": len(td),
+                                       "today": round(sum(1 for r in td if good(r["ex"])) / len(td), 4) if td else None}
     # 大跌風險的前瞻實測：當天存下的等級 vs 之後真的有沒有大跌
     out["risk"] = {"rows": [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in r.items()} for r in riskrows[-40:]]}
     for lv in ("低", "正常", "偏高", "高"):

@@ -104,6 +104,7 @@ const GLOSS = {
   dttp: "過去條件差不多的股票，隔天從開盤算起通常最多漲（跌）到哪裡，可以當停利參考。",
   dtsl: "過去條件差不多的股票，隔天從開盤算起通常最多反向走到哪裡，可以當停損參考。",
   oi: "未平倉：市場上還沒了結的期貨口數。價格上漲、未平倉也增加，代表有新資金進場。",
+  prem: "折溢價＝ETF 市價比它實際持股價值（淨值）貴或便宜多少。溢價 1% 代表花 101 元買到價值 100 元的東西；溢價通常會慢慢回到 0，所以溢價大時買進比較吃虧。數字是證交所收盤時的預估淨值換算，只做提醒、不影響評價。",
 };
 function help(k) { return `<button class="help" type="button" data-help="${k}" aria-label="說明">?</button>`; }
 document.addEventListener("click", (e) => {
@@ -237,6 +238,7 @@ const ICON = {
   sector: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
   report: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h7M9 16h7M9 8h3"/>',
   picks: '<path d="M12 3v18M5 10l7-7 7 7"/><path d="M5 21h14" opacity=".5"/>',
+  etf: '<path d="M4 8h16l-1.5 12h-13Z"/><path d="M8 8a4 4 0 0 1 8 0"/><path d="M9 13h6M10 16.5h4"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
   learn: '<path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v16H5.5c-.8 0-1.5-.7-1.5-1.5Z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v16h5.5c.8 0 1.5-.7 1.5-1.5Z"/><path d="M7 8h2M15 8h2M7 11h2M15 11h2"/>',
@@ -245,7 +247,7 @@ const ICON = {
 const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 const NAV = [
-  ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
+  ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/etf", "ETF 評價", "etf"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
   ["#/robot", "機器人模擬", "robot"], ["#/paper", "模擬交易", "wallet"], ["#/learn", "投資小教室", "learn"],
   null,
   ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
@@ -700,6 +702,7 @@ async function route() {
     else if (page === "check") await vCheck(tok);
     else if (page === "report") await vReport(tok);
     else if (page === "picks") await vPicks(tok);
+    else if (page === "etf") await vEtf(tok);
     else if (page === "sectors") await vSectors(tok);
     else if (page === "sector") await vSector(tok, decodeURIComponent(arg));
     else if (page === "global") await vGlobal(tok);
@@ -1018,7 +1021,8 @@ async function vStock(tok, code) {
       ${d.warrants ? `<a class="btn" href="#/warrants/${code}">相關權證 ${d.warrants.n_call + d.warrants.n_put} 檔</a>` : ""}
       ${S.status && S.status.static ? "" : `<a class="btn" href="#/paper/${code}">模擬下單</a>`}</div>
   </div>
-  ${ratingCard(d, r, RC)}
+  ${ratingCard(d, r, r.etf ? etfRC(RC) : RC)}
+  ${r.etf ? etfInfoCard(r, RC) : ""}
   <details class="card more-info section"><summary>分數、上漲機會與理由（${HZ_NAME[S.hz]}）</summary>
   <div class="grid g3 section">
     ${hzs.map((h, i) => `<section class="card hzcard ${i === S.hz ? "cur" : ""}">
@@ -1744,6 +1748,77 @@ function btLine(c, hn) {
   if (c.sell_n) out.push(`照「建議賣」：${d}後 ${P(c.sell_win)} 跑輸加權指數，平均${c.sell_ex >= 0 ? "多賺" : "少賺"} ${R(c.sell_ex)}`);
   return out.join("；");
 }
+// ====================================================================== ETF 評價
+// ETF 的準確度和個股分開把關（recs.etf）；個股頁與 ETF 頁共用
+const etfRC = (RC) => (RC && RC.etf ? { day: RC.day, h: RC.etf.h, etf: RC.etf } : null);
+const premTxt = (pm) => pm == null ? "—" : `${pm > 0 ? "溢價" : pm < 0 ? "折價" : "平價"} ${Math.abs(pm).toFixed(2)}%`;
+const premCls = (pm) => pm == null ? "muted" : Math.abs(pm) >= 1 ? "bad" : "";
+function etfInfoCard(r, RC) {
+  const E = (RC && RC.etf) || {}, note = (E.notes || {})[r.ek] || "";
+  const pm = r.pm;
+  const pmWarn = pm != null && Math.abs(pm) >= 1
+    ? (pm > 0 ? "市價比淨值貴 1% 以上，現在買等於多付；溢價通常會慢慢收斂，追高要小心。" : "市價比淨值便宜 1% 以上，常見於海外 ETF 或流動性差的時候。")
+    : "市價和淨值差不多。";
+  return `<section class="card section"><div class="card-h"><h2>${svgI("etf")} 這檔 ETF</h2><a class="more" href="#/etf">看全部 ETF 評價</a></div>
+    <div class="kv mini"><div><span>類型</span><b>${esc(r.ek || "—")}${r.ef && r.ek !== "海外股票" ? "（海外）" : ""}</b></div>
+      <div><span>折溢價</span><b class="${premCls(pm)}">${premTxt(pm)}</b></div>
+      <div><span>每天成交</span><b>${r.val != null ? r.val.toFixed(r.val >= 10 ? 0 : 1) + " 億" : "—"}</b></div></div>
+    <p class="note" style="margin:8px 0 0">${esc(note)}${pm != null ? " " + esc(pmWarn) : " 今天沒有折溢價資料。"}${help("prem")}</p>
+    ${r.ek === "槓桿反向" ? `<p class="note" style="margin:6px 0 0;color:var(--dn,inherit)"><b>注意：</b>槓桿／反向 ETF 每天重新調整倍數，持有超過幾天，漲跌就不再是指數的 2 倍或 −1 倍；不適合長期放著，也不給評價。</p>` : ""}
+    <p class="note" style="margin:6px 0 0">ETF 的評價只在 ETF 之間排名，準確度一樣用「之後跑贏／跑輸加權指數」計算，和個股分開把關。</p></section>`;
+}
+let etfSide = "B", etfHz = 2;
+async function vEtf(tok) {
+  const R = await api("recs").catch(() => null);
+  if (tok !== routeToken) return;
+  const E = R && R.etf;
+  if (!E) { view.innerHTML = `<h1>ETF 評價</h1><div class="card empty"><h2>ETF 評價準備中</h2><p>下次資料更新後就會出現。</p></div>`; return; }
+  const P = (v) => v == null ? "—" : Math.round(v * 100) + "%";
+  const etfs = S.latest.stocks.filter((r) => r.etf);
+  const cells = HZ.map((h, i) => {
+    const x = E.h[h] || {}, g = x.gate || {};
+    const parts = ["buy", "sell"].map((sd) => { const z = g[sd] || {}; return z.mode === "建議" ? (sd === "buy" ? "建議買" : "建議賣") : z.mode === "相對" ? (sd === "buy" ? "相對看好" : "相對看淡") : null; }).filter(Boolean);
+    const st = parts.length ? `<span class="pill ${x.sides && x.sides.length ? "p-good" : "p-bad"} sm">${parts.join("、")}</span>` : `<span class="pill p-bad sm">資料不足</span>`;
+    const b = (g.buy || {}).base, sv = (g.sell || {}).base;
+    return `<div class="concl"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3><p style="margin:0 0 6px">${st}</p>${gateLine(x, R)}
+      ${b != null ? `<p class="note" style="margin:4px 0 0">同一段時間，一般 ETF 有 ${P(b)} 跑贏、${P(sv)} 跑輸加權指數（拿來和上面的準確度比）。</p>` : ""}</div>`;
+  }).join("");
+  const kinds = Object.entries(E.kinds || {}).sort((a, b) => b[1] - a[1]);
+  view.innerHTML = `<h1 class="grad">ETF 評價</h1>
+  <p class="lead">依 ${dayFull(R.day)} 收盤資料，替成交量夠的股票型 ETF（共 ${E.h.long ? E.h.long.n_today : "—"} 檔：市值型、高股息、主動式、產業主題、海外股票）給短、中、長期評價。分數沿用個股模型，但只在 ETF 之間排名；準確度一樣看「之後跑贏（建議買）／跑輸（建議賣）加權指數」，和個股分開把關：60% 以上合格，沒達標就改標「相對看好／看淡」。</p>
+  <section class="card"><div class="card-h"><h2>ETF 評價過去的成績</h2>${help("recrule")}</div>
+    <div class="grid g3 concls">${cells}</div>
+    <p class="note" style="margin:10px 0 0">準確度＝最近 60 個已揭曉交易日，照「當時」的規則挑出來的 ETF 之後的實際成績。<b>要留意：</b>很多 ETF 持股重疊、走勢幾乎一樣（例如好幾檔都以台積電為主），同一天的評價常常一起對或一起錯，實際能驗證的樣本比檔數看起來少；資料也只有約一年。</p></section>
+  <div class="section filters"><div class="seg fill" id="eside"><button data-s="B">建議買／相對看好</button><button data-s="S">建議賣／相對看淡</button><button data-s="A">全部</button></div>
+    <div class="seg fill" id="ehz">${HZ.map((h, i) => `<button data-h="${i}">${HZ_NAME[i]}</button>`).join("")}</div></div>
+  <section class="card flush section" id="elist"></section>
+  <details class="card more-info section"><summary>ETF 類型說明（共 ${etfs.length} 檔）</summary>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th style="text-align:left">類型</th><th>檔數</th><th>評價</th><th style="text-align:left">特色</th></tr></thead><tbody>
+    ${kinds.map(([k, n]) => `<tr><td style="text-align:left"><b>${esc(k)}</b></td><td>${n}</td><td>${(E.rated || []).includes(k) ? "有" : "不給"}</td><td class="txt" style="text-align:left">${esc((E.notes || {})[k] || "")}</td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="note" style="margin:8px 0 0">折溢價來自證交所「ETF 即時預估淨值」收盤時的數字${E.nav_day ? `（${dayFull(E.nav_day)}）` : "（今天沒抓到，暫不顯示）"}；溢價超過 1% 代表買貴了，只做提醒，不影響評價。</p></details>
+  <p class="disclaimer">評價是依過去統計自動產生的參考，不保證獲利，也不是投資建議。「跑贏大盤」是相對表現；大盤大跌時，建議買的 ETF 也可能下跌。</p>`;
+  const draw = () => {
+    $$("#eside button").forEach((b) => b.classList.toggle("on", b.dataset.s === etfSide));
+    $$("#ehz button").forEach((b) => b.classList.toggle("on", b.dataset.h === String(etfHz)));
+    const i = etfHz;
+    let rows = etfs.filter((r) => r.ra && (etfSide === "A" ? r.ra[i] : sideHit(r.ra[i], etfSide)));
+    if (etfSide === "A") rows = etfs.filter((r) => r.ra);
+    rows.sort((a, b) => etfSide === "S" ? raVal(a.ra[i]) - raVal(b.ra[i]) || (a.s[i] ?? 50) - (b.s[i] ?? 50) : raVal(b.ra[i]) - raVal(a.ra[i]) || (b.s[i] ?? 50) - (a.s[i] ?? 50));
+    $("#elist").innerHTML = rows.length ? `<div class="tbl-wrap"><table class="tbl ptbl"><thead><tr><th>ETF</th><th>收盤</th>${HZ.map((h, k) => `<th>${HZ_NAME[k]}</th>`).join("")}<th>折溢價${help("prem")}</th><th>每天成交</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr style="cursor:pointer" onclick="location.hash='#/stock/${r.c}'">
+        <td><b>${esc(r.n)}</b>${starBtn(r.c)}<br><span class="muted small">${r.c}・${esc(r.ek || "")}</span></td>
+        <td>${fmtPx(r.px)}<br>${chgHtml(r.chg)}</td>
+        ${HZ.map((h, k) => `<td>${rTag(raOf(r, k), { title: raTitle(r, k) })}</td>`).join("")}
+        <td><span class="${premCls(r.pm)}">${premTxt(r.pm)}</span></td>
+        <td>${r.val != null ? r.val.toFixed(r.val >= 10 ? 0 : 1) + " 億" : "—"}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty" style="padding:22px"><p>${HZ_NAME[i]}今天沒有這一類的 ETF。</p></div>`;
+  };
+  draw();
+  $("#eside").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) { etfSide = b.dataset.s; draw(); } });
+  $("#ehz").addEventListener("click", (e) => { const b = e.target.closest("[data-h]"); if (b) { etfHz = +b.dataset.h; draw(); } });
+}
+
 let pickSide = "B", pickHz = "all", pickLimit = 50;
 async function vPicks(tok) {
   const R = await api("recs").catch(() => null);
@@ -2017,14 +2092,14 @@ function ratingCard(d, r, RC) {
       const why = ((d.h[h] && (up_ ? d.h[h].pos : d.h[h].neg)) || []).slice(0, 2);
       if (why.length) body += `<p class="note" style="margin:6px 0 0">理由：${esc(why.join("；"))}</p>`;
       body += timingLine(st.timing, i, up_ ? "B" : "S", (RC && RC.day) || S.latest.day);
-      if (up_ && !(S.status && S.status.static)) body += `<a class="btn sm" style="margin-top:6px" href="#/paper/${r.c}/plan-${h}">依時機模擬買進</a>`;
+      if (up_ && !r.etf && !(S.status && S.status.static)) body += `<a class="btn sm" style="margin-top:6px" href="#/paper/${r.c}/plan-${h}">依時機模擬買進</a>`;
       const z = (st.gate || {})[up_ ? "buy" : "sell"] || {};
       const acc = a === "b" || a === "s" ? z.trail : z.rate;
-      if (acc != null) body += `<p class="note" style="margin:4px 0 0">${a === "b" || a === "s" ? "未達建議門檻，" : ""}這類評價最近準確度 ${Math.round(acc * 100)}%（${up_ ? "跑贏" : "跑輸"}加權指數的比例）</p>`;
+      if (acc != null) body += `<p class="note" style="margin:4px 0 0">${a === "b" || a === "s" ? "未達建議門檻，" : ""}${r.etf ? "ETF 的" : ""}這類評價最近準確度 ${Math.round(acc * 100)}%（${up_ ? "跑贏" : "跑輸"}加權指數的比例）</p>`;
     } else if (a === "N") {
       const gOff = st.gate && Object.values(st.gate).some((z) => z.off);
       body = `${beatLine(x, st)}${x.pb != null && x.ex != null ? `<div class="kv mini"><div><span>預期比大盤</span><b class="${cls(x.ex)}">${(x.ex > 0 ? "+" : "") + (x.ex * 100).toFixed(1)}%</b></div><div><span>上漲機率</span><b>${pctTxt(x.up)}</b></div></div>` : ""}<p class="note" style="margin:4px 0 0">${esc(r.rn ? r.rn : neutralWhy(x, st))}</p>`;
-    } else body = `<p class="note" style="margin:4px 0 0">ETF 或資料不足，不給評價</p>`;
+    } else body = `<p class="note" style="margin:4px 0 0">${esc(r.rn || (r.etf ? "這類 ETF 不給評價" : "資料不足，不給評價"))}</p>`;
     return `<div class="rcell ${a === "B" ? "buy" : a === "S" ? "sell" : ""}"><h3>${HZ_NAME[i]}<small>${HZ_SPAN[i]}</small></h3>${rTag(a, { big: true, title: raTitle(r, i) })}${body}</div>`;
   }).join("");
   return `<section class="card section rcard">${stockSummary(r, hs, RC, px)}<div class="grid g3">${cells}</div>
@@ -2046,15 +2121,16 @@ function stockSummary(r, hs, RC, px) {
   if (!a) return "";
   const x = hs[HZ[i]] || {}, g = ((RC && RC.h[HZ[i]]) || {}).gate || {};
   const P = (v) => v == null ? "—" : Math.round(v * 100) + "%";
+  const W = r.etf ? " ETF " : "股票";
   const msg = {
     B: `過去照這類評價買，約 ${P((g.buy || {}).rate)} 的時候跑贏大盤。`,
-    b: `比大多數股票好一些，但還沒達到「建議買」的標準（這類股票過去只有 ${P((g.buy || {}).trail)} 跑贏大盤），適合先觀察。`,
-    N: r.rn ? `${r.rn}。` : `${neutralWhy(x, (RC && RC.h[HZ[i]]) || {})}。`,
-    s: "比大多數股票差一些，但還沒達到「建議賣」的標準；手上有的話留意就好。",
-    S: `過去約 ${P((g.sell || {}).rate)} 的時候，這類股票之後比大盤差。手上有可以考慮賣掉或不要加碼，沒有就先別買。`,
+    b: `比大多數${W}好一些，但還沒達到「建議買」的標準（這類${W}過去只有 ${P((g.buy || {}).trail)} 跑贏大盤），適合先觀察。`,
+    N: r.rn ? `${r.rn}。` : r.etf ? "在 ETF 裡排名中間，看不出明顯的好壞。" : `${neutralWhy(x, (RC && RC.h[HZ[i]]) || {})}。`,
+    s: `比大多數${W}差一些，但還沒達到「建議賣」的標準；手上有的話留意就好。`,
+    S: `過去約 ${P((g.sell || {}).rate)} 的時候，這類${W}之後比大盤差。手上有可以考慮賣掉或不要加碼，沒有就先別買。`,
   }[a];
   const lot = px ? px * 1000 : null;
-  const lotTxt = lot ? `買一張（1,000 股）約 ${lot >= 1e4 ? (lot / 1e4).toFixed(lot >= 1e5 ? 0 : 1) + " 萬" : fmtInt(Math.round(lot))} 元，也可以只買幾股（零股）。` : "";
+  const lotTxt = lot && !r.etf ? `買一張（1,000 股）約 ${lot >= 1e4 ? (lot / 1e4).toFixed(lot >= 1e5 ? 0 : 1) + " 萬" : fmtInt(Math.round(lot))} 元，也可以只買幾股（零股）。` : "";
   const R = S.latest && S.latest.market && S.latest.market.risk;
   let be = "";
   if (r.be != null) {

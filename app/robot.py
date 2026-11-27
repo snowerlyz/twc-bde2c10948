@@ -342,7 +342,7 @@ def _plan_st(a, stocks, res, recs, made, day, eqv):
     cand = []
     for r in stocks:
         ra = r.get("ra") or "NNN"
-        if ra[0] not in "Bb" or r["c"] in held or r.get("rn"):
+        if r.get("etf") or ra[0] not in "Bb" or r["c"] in held or r.get("rn"):
             continue
         hs = ((rr.get(r["c"]) or {}).get("hs") or {}).get("short") or {}
         cand.append((0 if ra[0] == "B" else 1, -(hs.get("pb") or 0), r, hs))

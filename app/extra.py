@@ -507,3 +507,52 @@ def collect_tdcc():
     write_json(path, {"day": day, "d": out}, gz=True)
     log("集保股權分散表：%s，%d 檔" % (day, len(out)))
     return day
+
+
+ETF_NAV_PATH = os.path.join(DB, "etf_nav.json")
+
+
+def collect_etf_nav():
+    """證交所「ETF 即時預估淨值」：成交價、預估淨值、折溢價（%）。盤後抓的是收盤時的最後一筆。
+    欄位依證交所網頁：a 代號、b 名稱、e 成交價、f 預估淨值、g 折溢價幅度（%）、h 前一營業日淨值、i 日期、j 時間。
+    格式不符時不寫入（不影響其他功能）。"""
+    import json as _json
+    txt = fetch("https://mis.twse.com.tw/stock/data/all_etf.txt", timeout=60)
+    obj = _json.loads(txt.lstrip("﻿"))
+    recs = []
+    for blk in obj.get("a1") or []:
+        recs.extend(blk.get("msgArray") or [])
+    rows, day = {}, None
+
+    def f(x):
+        try:
+            v = float(str(x).replace(",", "").replace("%", ""))
+            return v if v == v else None
+        except (TypeError, ValueError):
+            return None
+    for m in recs:
+        code = str(m.get("a") or "").strip()
+        px, nav, prem = f(m.get("e")), f(m.get("f")), f(m.get("g"))
+        if not code or not nav or nav <= 0:
+            continue
+        if px and px > 0:
+            prem2 = (px / nav - 1) * 100
+            if prem is None or abs(prem - prem2) > 0.5:     # 欄位對不上時以自己算的為準
+                prem = prem2
+        if prem is None or abs(prem) > 50:
+            continue
+        rows[code] = {"px": px, "nav": nav, "prem": round(prem, 2), "pnav": f(m.get("h")), "t": str(m.get("j") or "")}
+        day = day or (str(m.get("i") or "").replace("/", "") or None)
+    if len(rows) < 20:
+        log("ETF 預估淨值：資料太少（%d 筆），不更新；欄位：%s" % (len(rows), list((recs or [{}])[0].keys())[:12]))
+        return None
+    old = read_json(ETF_NAV_PATH, {}) or {}
+    hist = old.get("hist") or {}
+    if day:
+        for code, r in rows.items():
+            hs = [x for x in hist.get(code, []) if x[0] != day]
+            hs.append([day, r["prem"]])
+            hist[code] = hs[-60:]
+    write_json(ETF_NAV_PATH, {"day": day, "at": now_tw().strftime("%Y-%m-%d %H:%M"), "rows": rows, "hist": hist})
+    log("ETF 預估淨值：%s，%d 檔" % (day, len(rows)))
+    return day
