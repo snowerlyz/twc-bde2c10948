@@ -20,6 +20,7 @@
   --down-soft: rgba(51, 213, 143, .14);
   --flat: #8a95ab;
   --blue: #7fa6ff;
+  --violet: #c39bff;
   --focus: #9dbbff;
   --shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 20px 50px -20px rgba(0, 0, 0, .65);
   --au1: #128ea3; --au2: #4a3fd6; --au3: #d9a441; --au-amp: .62;
@@ -37,7 +38,7 @@
   --line: rgba(23, 35, 59, .10); --line-2: rgba(23, 35, 59, .18);
   --brass: #a87720; --brass-2: #c9962f; --brass-soft: rgba(201, 150, 47, .14);
   --up: #d42f3a; --up-soft: rgba(212, 47, 58, .10); --down: #14864f; --down-soft: rgba(20, 134, 79, .10);
-  --blue: #3a62c2; --focus: #3a62c2;
+  --blue: #3a62c2; --violet: #7a4fc9; --focus: #3a62c2;
   --shadow: 0 1px 0 rgba(255, 255, 255, .8) inset, 0 18px 40px -22px rgba(23, 35, 59, .35);
   --au1: #6fd6e3; --au2: #a9a1ff; --au3: #f3cf86; --au-amp: .9;
   color-scheme: light;
@@ -872,3 +873,16 @@ details.lterm > summary b { font-size: 15.5px; white-space: nowrap; }
 .tp-k.site { background: rgba(110, 160, 255, .14); color: var(--blue, #7aa7ff); }
 .tp-k + b { display: block; }
 .lck.site { color: var(--blue, #7aa7ff); border-color: var(--blue, #7aa7ff); font-weight: 700; font-style: italic; }
+
+/* 人格競賽、每日收益 */
+.ar-lead td b { font-size: 15px; }
+.ar-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.ar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.ar-card h3 { margin: 0 0 2px; }
+.ar-card .ar-line { color: var(--ink-2); margin: 2px 0 10px; }
+.ar-rev { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 14px; margin: 8px 0; }
+.ar-rev ul { margin: 4px 0 0; padding-left: 18px; }
+.ar-rev li { margin: 2px 0; }
+.ar-rev .ar-rh { font-size: 12px; color: var(--muted); }
+.dl-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 0 18px 8px; font-size: 13px; color: var(--ink-2); }
+.ar-card .kv.mini { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -207,6 +207,13 @@ def analyze(prog=None):
         _rb.run(D, res, stocks, dt, recs)
     except Exception as e:
         log("機器人模擬下單失敗：%s\n%s" % (e, traceback.format_exc()))
+    # 人格競賽（當沖、短線各三種交易人格；和機器人帳戶分開，db/arena.json）
+    try:
+        import arena as _ar
+        importlib.reload(_ar)
+        _ar.run(D, res, stocks, dt, A_all)
+    except Exception as e:
+        log("人格競賽失敗：%s\n%s" % (e, traceback.format_exc()))
     by_code = {r["c"]: r for r in stocks}
     mkt = res["market"]
 

@@ -231,6 +231,7 @@ const ICON = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 14.5h2"/><path d="M6 6l9-3 1 3"/>',
+  arena: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/>',
   robot: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 17h5"/><circle cx="12" cy="3.5" r="1"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
@@ -248,7 +249,7 @@ const svgI = (k, fill) => `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor
 
 const NAV = [
   ["#/", "今日評價", "home"], ["#/picks", "評價清單", "picks"], ["#/etf", "ETF 評價", "etf"], ["#/stocks", "全部股票", "list"], ["#/watch", "自選", "star"],
-  ["#/robot", "機器人模擬", "robot"], ["#/paper", "模擬交易", "wallet"], ["#/learn", "投資小教室", "learn"],
+  ["#/robot", "機器人模擬", "robot"], ["#/arena", "人格競賽", "arena"], ["#/paper", "模擬交易", "wallet"], ["#/learn", "投資小教室", "learn"],
   null,
   ["#/report", "盤後報告", "report"], ["#/sectors", "類股", "sector"], ["#/global", "國際股市", "globe"],
   ["#/daytrade", "當沖", "bolt"], ["#/warrants", "權證", "warrant"],
@@ -708,6 +709,7 @@ async function route() {
     else if (page === "global") await vGlobal(tok);
     else if (page === "menu") vMenu();
     else if (page === "robot") await vRobot(tok);
+    else if (page === "arena") await vArena(tok);
     else if (page === "paper") await vPaper(tok, decodeURIComponent(arg || ""));
     else if (page === "help") await vHelp(tok, decodeURIComponent(arg || ""));
     else if (page === "learn") vLearn(tok, decodeURIComponent(arg || ""));
@@ -2702,19 +2704,154 @@ async function vRobot(tok) {
         <div><span>手續費＋稅</span><b>${money(s.fees + s.taxes)}</b><em class="rbn">${isDt ? `有交易的日子 ${s.act_days} 天` : `現金 ${money(s.cash)}`}</em></div>
       </div>
       <div id="rbchart" style="margin-top:12px"></div></section>
+    ${dailyBlock("rbdaily", A.eq)}
     <section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>下一個交易日的委託</h3><span class="note">${R.plan_day ? `依 ${dayFull(R.plan_day)} 收盤資料排好，開盤後只依事先寫好的規則換成備選` : ""}</span></div>${pend}</section>
     ${isDt ? "" : `<section class="card flush section"><div class="card-h" style="padding:14px 18px 6px"><h3>目前庫存</h3><span class="note">${A.pos.length} 檔・市值 ${money(A.pos.reduce((a, p) => a + p.mv, 0))}</span></div>${pos}</section>`}
     <details class="card flush section" open><summary style="padding:14px 18px"><b>交易紀錄</b>（共 ${A.trades.length} 筆，最新在上）</summary>${trades}</details>
     <details class="card flush section"><summary style="padding:14px 18px"><b>委託紀錄</b>（每一筆委託的決定時間、成交時刻與結果）</summary>${orders}</details>`;
     rbChart($("#rbchart"), A.eq);
+    dailyWire("rbdaily", A.eq);
     rbLiveRender();
     const mb = $("#rbmore"); if (mb) mb.onclick = () => { rbAll = true; draw(); };
   };
   rbAll = false;
   $$("#rbtab button").forEach((b) => b.onclick = () => { rbAll = false; rbAcct = b.dataset.a; store.set("rbAcct", rbAcct); draw(); });
   draw();
-  onResize(() => location.hash === "#/robot" && rbChart($("#rbchart"), R.acct[rbAcct].eq));
+  onResize(() => { if (location.hash === "#/robot") { rbChart($("#rbchart"), R.acct[rbAcct].eq); dailyBars($("#rbdaily-bars"), dailyRows(R.acct[rbAcct].eq)); } });
   rbLiveStart();
+}
+
+// ---- 每日收益統計（機器人、人格競賽共用；從每天收盤的總資產算）
+function dailyRows(eq) {
+  const out = [];
+  for (let i = 1; i < (eq || []).length; i++) {
+    const [d, v, b] = eq[i], [, v0, b0] = eq[i - 1];
+    out.push({ d, v, pnl: v - v0, r: v0 ? v / v0 - 1 : 0, mr: b && b0 ? b / b0 - 1 : null, cum: v / eq[0][1] - 1 });
+  }
+  return out;
+}
+const pcS = (x, d = 2) => x == null ? "—" : `<span class="${cls(x)}">${x > 0 ? "+" : ""}${(x * 100).toFixed(d)}%</span>`;
+function dailySum(rows) {
+  if (!rows.length) return "";
+  const w = rows.filter((x) => x.pnl > 0).length, l = rows.filter((x) => x.pnl < 0).length;
+  const best = rows.reduce((a, x) => x.pnl > a.pnl ? x : a), worst = rows.reduce((a, x) => x.pnl < a.pnl ? x : a);
+  const beat = rows.filter((x) => x.mr != null && x.r > x.mr).length, nb = rows.filter((x) => x.mr != null).length;
+  return `<div class="dl-sum"><span>賺錢 <b>${w}</b> 天・賠錢 <b>${l}</b> 天・持平 ${rows.length - w - l} 天</span><span>平均每天 ${smoney(rows.reduce((a, x) => a + x.pnl, 0) / rows.length)} 元</span>
+    <span>最好 ${dayStr(best.d)} ${smoney(best.pnl)}</span><span>最差 ${dayStr(worst.d)} ${smoney(worst.pnl)}</span>${nb ? `<span>贏過加權指數 ${beat}／${nb} 天</span>` : ""}</div>`;
+}
+function dailyBars(box, rows) {
+  if (!box) return;
+  if (rows.length < 1) { box.innerHTML = '<p class="note" style="padding:0 18px">第二個交易日收盤後開始有每日損益。</p>'; return; }
+  const W = Math.max(240, box.clientWidth - 36), H = 120, PB = 16, m = Math.max(1, ...rows.map((x) => Math.abs(x.pnl)));
+  const bw = W / rows.length, y0 = (H - PB) / 2;
+  const bars = rows.map((x, i) => { const h = Math.abs(x.pnl) / m * (y0 - 4); return `<rect x="${(i * bw + bw * 0.15).toFixed(1)}" y="${(x.pnl >= 0 ? y0 - h : y0).toFixed(1)}" width="${Math.max(1, bw * 0.7).toFixed(1)}" height="${Math.max(0.5, h).toFixed(1)}" fill="var(--${x.pnl >= 0 ? "up" : "down"})"><title>${dayStr(x.d)} ${x.pnl >= 0 ? "+" : ""}${Math.round(x.pnl).toLocaleString()} 元</title></rect>`; }).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="每日損益" style="margin:0 18px"><g class="axis grid"><line x1="0" x2="${W}" y1="${y0}" y2="${y0}"/>
+    <text x="0" y="${H - 3}">${dayStr(rows[0].d)}</text><text x="${W}" y="${H - 3}" text-anchor="end">${dayStr(rows[rows.length - 1].d)}</text>
+    <text x="${W}" y="10" text-anchor="end">+${money(m)}</text></g>${bars}</svg>`;
+}
+function dailyTable(rows, all) {
+  const R = rows.slice().reverse(), T = all ? R : R.slice(0, 10);
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>當天損益</th><th>當天報酬</th><th>加權指數</th><th>收盤總資產</th><th>累計報酬</th></tr></thead><tbody>
+    ${T.map((x) => `<tr><td>${dayStr(x.d)}</td><td>${smoney(x.pnl)}</td><td>${pcS(x.r)}</td><td>${pcS(x.mr)}</td><td>${money(x.v)}</td><td>${pcS(x.cum)}</td></tr>`).join("")}</tbody></table></div>
+    ${R.length > T.length ? `<p style="padding:10px 18px"><button class="btn sm" data-dlall>顯示全部 ${R.length} 天</button></p>` : ""}`;
+}
+function dailyBlock(id, eq) {
+  const rows = dailyRows(eq);
+  return `<details class="card flush section" id="${id}" open><summary style="padding:14px 18px"><b>每日收益</b>（每天收盤結算的損益，紅色賺、綠色賠）</summary>
+    ${dailySum(rows)}<div id="${id}-bars"></div><div id="${id}-tbl">${rows.length ? dailyTable(rows, false) : ""}</div></details>`;
+}
+function dailyWire(id, eq) {
+  const rows = dailyRows(eq);
+  dailyBars($(`#${id}-bars`), rows);
+  const b = $(`#${id}-tbl [data-dlall]`); if (b) b.onclick = () => { $(`#${id}-tbl`).innerHTML = dailyTable(rows, true); };
+}
+
+// ====================================================================== 人格競賽（當沖、短線各三種人格；和機器人帳戶分開）
+let arKind = store.get("arKind", "dt");
+const AR_COL = ["var(--brass)", "var(--blue)", "var(--violet)"];
+function arChart(box, ps) {
+  if (!box) return;
+  const L = Math.max(...ps.map((p) => p.eq.length));
+  if (L < 2) { box.innerHTML = '<p class="note">從第一個交易日收盤後開始畫：三個人格的累計報酬，和同期間加權指數比較。</p>'; return; }
+  const ref = ps.find((p) => p.eq.length === L).eq;
+  const t0 = ref.find((x) => x[2]) || ref[0];
+  const ser = ps.map((p) => { const m = new Map(p.eq.map((x) => [x[0], x[1] / p.eq[0][1] - 1])); return ref.map((x) => m.has(x[0]) ? m.get(x[0]) : null); });
+  const bench = ref.map((x) => x[2] && t0[2] ? x[2] / t0[2] - 1 : null);
+  const W = Math.max(240, box.clientWidth), H = 170, PR = 44, PB = 18, pw = W - PR;
+  const vals = ser.flat().concat(bench).filter((v) => v != null), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals) || 0.01;
+  const x = (i) => i / (L - 1) * pw, y = (v) => 6 + (hi - v) / (hi - lo || 1) * (H - PB - 6);
+  const line = (arr, col, dash) => `<polyline fill="none" stroke="${col}" stroke-width="2" ${dash ? 'stroke-dasharray="4 3"' : ""} points="${arr.map((v, i) => v == null ? "" : `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ")}"/>`;
+  const pc = (v) => (v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%";
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="累計報酬走勢"><g class="axis grid"><line x1="0" x2="${pw}" y1="${y(0)}" y2="${y(0)}"/>
+    <text x="${W - 2}" y="${y(hi) + 8}" text-anchor="end">${pc(hi)}</text><text x="${W - 2}" y="${y(lo)}" text-anchor="end">${pc(lo)}</text>
+    <text x="0" y="${H - 3}">${dayStr(ref[0][0])}</text><text x="${pw}" y="${H - 3}" text-anchor="end">${dayStr(ref[L - 1][0])}</text></g>
+    ${line(bench, "var(--muted)", true)}${ser.map((a, i) => line(a, AR_COL[i])).join("")}</svg>
+    <p class="note" style="margin:4px 0 0">${ps.map((p, i) => `<span style="color:${AR_COL[i]}">━</span> ${esc(p.name)}`).join("　")}　<span style="color:var(--muted)">┅</span> 加權指數</p>`;
+}
+function arDaily(ps, all) {
+  const days = [...new Set(ps.flatMap((p) => dailyRows(p.eq).map((x) => x.d)))].sort().reverse();
+  const by = ps.map((p) => new Map(dailyRows(p.eq).map((x) => [x.d, x])));
+  const T = all ? days : days.slice(0, 10);
+  if (!days.length) return '<p class="note" style="padding:0 18px 14px">第二個交易日收盤後開始有每日損益。</p>';
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th>${ps.map((p, i) => `<th><span class="ar-dot" style="background:${AR_COL[i]}"></span>${esc(p.name)}</th>`).join("")}<th>加權指數</th><th>當天第一</th></tr></thead><tbody>
+    ${T.map((d) => { const xs = by.map((m) => m.get(d)); const mr = (xs.find((x) => x && x.mr != null) || {}).mr;
+      const top = xs.reduce((a, x, i) => x && (a < 0 || x.r > xs[a].r) ? i : a, -1);
+      return `<tr><td>${dayStr(d)}</td>${xs.map((x) => `<td>${x ? `${smoney(x.pnl)}<br>${pcS(x.r)}` : "—"}</td>`).join("")}<td>${pcS(mr)}</td><td>${top >= 0 && xs[top].pnl ? esc(ps[top].name) : "—"}</td></tr>`; }).join("")}
+    </tbody></table></div>${days.length > T.length ? `<p style="padding:10px 18px"><button class="btn sm" id="ardlall">顯示全部 ${days.length} 天</button></p>` : ""}`;
+}
+async function vArena(tok) {
+  const R = await api("arena", { fresh: true }).catch(() => null);
+  if (tok !== routeToken) return;
+  if (!R || !R.p) { view.innerHTML = `<h1 class="grad">人格競賽</h1><div class="card empty"><h2>準備中</h2><p>下次收盤後資料更新時，六個人格就會開戶並送出第一批委託。</p></div>`; return; }
+  const dt = (s) => s ? esc(s.slice(5).replace("-", "/")) : "—";
+  const stk = (c, n) => `<a href="#/stock/${c}"><b>${esc(n)}</b></a><br><span class="muted small">${esc(c)}</span>`;
+  view.innerHTML = `<h1 class="grad">人格競賽</h1>
+  <p class="lead">當沖、短線各有<b>三個個性不同的模擬交易員</b>，各 100 萬元，照自己固定的做法自動下單、互相比成績。三種典型是「<b>照模型、只做最有把握的幾檔</b>」「<b>追強勢</b>」「<b>買跌深</b>」，用來長期觀察哪一種做法在台股比較有效。和「機器人模擬」的兩個帳戶完全分開。</p>
+  <div class="section filters"><div class="seg" id="artab"><button data-k="dt">當沖</button><button data-k="st">短線</button></div></div>
+  <div id="arbody"></div>
+  <details class="card more-info section"><summary>比賽規則</summary><ul>
+    <li>每個人格的做法在開戶前就定好，<b>之後不為了成績改規則</b>，這樣比出來的結果才有參考價值。</li>
+    <li>每週第一次更新時，每個人格會<b>自己整理上週的成績與心得</b>（賺賠情況、適合什麼行情、常沒成交的原因），寫在各自的卡片上。</li>
+    <li>成交方式、費用、公平性和「機器人模擬」完全一樣：委託在收盤後決定、隔天開盤後不改；開盤價／收盤價用集合競價撮合，漲停買不到、跌停賣不掉；手續費 0.1425% × 6 折、證交稅 一般 0.3%／當沖 0.15%。</li>
+    <li>只挑 20 天平均每天成交 1 億元以上、股價 10 元以上的股票，不買 ETF 與處置股。</li>
+  </ul></details>
+  <p class="disclaimer">這是模擬成績，不是投資建議；真實下單會有滑價、排隊買不到等差異。樣本少時成績起伏很大，請看長期。</p>`;
+  const draw = () => {
+    $$("#artab button").forEach((b) => b.classList.toggle("on", b.dataset.k === arKind));
+    const ps = R.p.filter((p) => p.kind === arKind), isDt = arKind === "dt";
+    const rank = ps.map((p, i) => [p, i]).sort((a, b) => b[0].stats.ret - a[0].stats.ret);
+    const board = `<div class="tbl-wrap"><table class="tbl ar-lead"><thead><tr><th>名次</th><th style="text-align:left">人格</th><th>總資產</th><th>累計報酬</th><th>比加權指數</th><th>今天</th><th>交易筆數</th><th>最大回落</th></tr></thead><tbody>
+      ${rank.map(([p, i], k) => { const s = p.stats, vs = s.bench != null ? s.ret - s.bench : null; return `<tr><td>${k + 1}</td><td class="txt"><span class="ar-dot" style="background:${AR_COL[i]}"></span><b>${esc(p.name)}</b><br><span class="muted small">${esc(p.style)}・每天最多 ${p.max} 檔</span></td>
+        <td>${money(s.equity)}</td><td>${pcS(s.ret)}</td><td>${vs == null ? "—" : pcS(vs)}</td><td>${s.today_n ? `${smoney(s.today_pnl)}<br><span class="muted small">${s.today_n} 筆</span>` : '<span class="muted">—</span>'}</td>
+        <td>${s.n}${s.win != null ? `<br><span class="muted small">賺錢 ${pctTxt(s.win)}</span>` : ""}</td><td>${pcS(s.mdd)}</td></tr>`; }).join("")}</tbody></table></div>`;
+    const card = (p, i) => {
+      const rv = p.rev || [], s = p.stats;
+      const pend = p.pending.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>動作</th><th style="text-align:left">為什麼</th></tr></thead><tbody>${p.pending.map((o) => `<tr><td>${stk(o.c, o.n)}</td><td>${o.side === "B" ? '<span class="up">買進</span>' : `<span class="down">${isDt ? "先賣" : "賣出"}</span>`}</td><td class="txt">${esc(o.why || "")}<br><span class="muted small">${esc(o.plan || "")}</span></td></tr>`).join("")}</tbody></table></div>` : `<p class="note">${isDt ? "下一個交易日沒有符合條件的股票，整天空手。" : "下一個交易日沒有委託。"}</p>`;
+      const pos = !isDt ? (p.pos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>買進價</th><th>現價</th><th>未實現</th><th>已抱</th></tr></thead><tbody>${p.pos.map((x) => `<tr><td>${stk(x.c, x.n)}</td><td>${fmtPx(x.px)}</td><td>${fmtPx(x.last)}</td><td>${smoney(x.upnl)}<br>${pcS(x.uret)}</td><td>${x.held} 天${x.sell ? `<br><span class="down small">${esc(x.sell)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>` : '<p class="note">目前沒有持股。</p>') : "";
+      const trades = p.trades.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>股票</th><th>進場</th><th>出場</th><th>損益</th></tr></thead><tbody>${p.trades.slice(0, 15).map((t) => `<tr><td>${stk(t.c, t.n)}<br><span class="muted small">${esc(t.dir)}</span></td><td>${dt(t.in_at)}<br>${fmtPx(t.in_px)}</td><td>${dt(t.out_at)}<br>${fmtPx(t.out_px)}</td><td>${smoney(t.pnl)}<br>${pcS(t.ret)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="note">還沒有完成的交易。</p>';
+      const revHtml = (r) => `<div class="ar-rev"><div class="ar-rh">${esc(r.week.replace("-W", " 年第 "))} 週・整理到 ${dayStr(r.upto)}</div><ul>${r.lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+      return `<section class="card ar-card"><h3><span class="ar-dot" style="background:${AR_COL[i]}"></span>${esc(p.name)} <span class="muted small">${esc(p.style)}</span></h3>
+        <p class="ar-line">${esc(p.line)}</p>
+        <div class="kv mini"><div><span>總資產</span><b>${money(s.equity)}</b></div><div><span>累計</span><b>${pcS(s.ret)}</b></div><div><span>賺錢比例</span><b>${s.win == null ? "—" : pctTxt(s.win)}</b></div><div><span>手續費＋稅</span><b>${money(s.fees + s.taxes)}</b></div></div>
+        <h4 style="margin:14px 0 0">我的策略整理<span class="muted small">（每週自己整理一次）</span></h4>
+        ${rv.length ? revHtml(rv[0]) : `<div class="ar-rev"><ul><li>我的做法：${esc(p.line)}。</li><li>${dayFull(p.start)} 開戶，第一週結束後會整理第一篇。</li></ul></div>`}
+        <details class="more-info"><summary>我的規則</summary><ul>${p.rules.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>
+        <details class="more-info"><summary>下一個交易日的委託（${p.pending.length}）</summary>${pend}</details>
+        ${isDt ? "" : `<details class="more-info"><summary>目前庫存（${p.pos.length}）</summary>${pos}</details>`}
+        <details class="more-info"><summary>交易紀錄（${p.trades.length}）</summary>${trades}</details>
+        ${rv.length > 1 ? `<details class="more-info"><summary>以前的策略整理（${rv.length - 1}）</summary>${rv.slice(1).map(revHtml).join("")}</details>` : ""}
+      </section>`;
+    };
+    $("#arbody").innerHTML = `<section class="card section"><div class="card-h"><h2>${isDt ? "當沖" : "短線"}排行榜</h2><span class="note">結算到 ${dayFull(R.day)}・${dayFull(R.start)} 開賽</span></div>
+      ${board}<div id="archart" style="margin-top:12px"></div></section>
+      <details class="card flush section" open><summary style="padding:14px 18px"><b>每日收益</b>（三個人格每天收盤結算的損益）</summary><div id="ardl">${arDaily(ps, false)}</div></details>
+      <div class="ar-grid section">${ps.map(card).join("")}</div>`;
+    arChart($("#archart"), ps);
+    const b = $("#ardlall"); if (b) b.onclick = () => { $("#ardl").innerHTML = arDaily(ps, true); };
+  };
+  $$("#artab button").forEach((b) => b.onclick = () => { arKind = b.dataset.k; store.set("arKind", arKind); draw(); });
+  draw();
+  onResize(() => location.hash === "#/arena" && arChart($("#archart"), R.p.filter((p) => p.kind === arKind)));
 }
 
 // ---- 盤中即時觀察（試算，不是正式成交）：雲端讀 live 分支、電腦版讀 /api/robot_live
